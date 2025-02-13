@@ -2,4 +2,6 @@ fastapi
 python-telegram-bot
 openai
 python-dotenv
-uvicorn 
+uvicorn
+aiohttp
+python-dateutil 
