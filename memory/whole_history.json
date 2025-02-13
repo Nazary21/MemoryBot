@@ -1,1 +1,282 @@
-[]
+[
+    {
+        "role": "user",
+        "content": "Меня зовут Гашиш",
+        "timestamp": 1739460479.262209
+    },
+    {
+        "role": "assistant",
+        "content": "Здравствуйте, Гашиш! Чем я могу помочь вам сегодня?",
+        "timestamp": 1739460479.262209
+    },
+    {
+        "role": "user",
+        "content": "Как  меня зовут?",
+        "timestamp": 1739460484.724833
+    },
+    {
+        "role": "assistant",
+        "content": "Извините, я не могу знать ваше имя, так как я всего лишь виртуальный помощник. Как я могу помочь вам сегодня?",
+        "timestamp": 1739460484.724833
+    },
+    {
+        "role": "user",
+        "content": "Меня зовут Назар",
+        "timestamp": 1739460502.978996
+    },
+    {
+        "role": "assistant",
+        "content": "Приятно познакомиться, Назар! Чем могу помочь?",
+        "timestamp": 1739460502.978996
+    },
+    {
+        "role": "user",
+        "content": "Как меня зовут?",
+        "timestamp": 1739460510.6630468
+    },
+    {
+        "role": "assistant",
+        "content": "Извините, я не могу узнать ваше имя. Вас зовут?",
+        "timestamp": 1739460510.6630468
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "Назар"
+        },
+        "timestamp": 1739460854.93042
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Спасибо за подтверждение, Назар! Чем могу помочь вам сегодня?"
+        },
+        "timestamp": 1739460854.93042
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "Дарова!"
+        },
+        "timestamp": 1739462260.968141
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Привет, Назар! Чем могу помочь сегодня?"
+        },
+        "timestamp": 1739462260.968141
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "/start"
+        },
+        "timestamp": 1739462261.935929
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Привет, Назар! Чем я могу помочь сегодня?"
+        },
+        "timestamp": 1739462261.935929
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "как меня зовут?"
+        },
+        "timestamp": 1739462262.737599
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Вас зовут Назар. Как я могу помочь вам сегодня, Назар?"
+        },
+        "timestamp": 1739462262.737599
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "hey!"
+        },
+        "timestamp": 1739462263.590006
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Привет, Назар! Чем я могу помочь сегодня?"
+        },
+        "timestamp": 1739462263.590006
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "/start"
+        },
+        "timestamp": 1739462264.3962638
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Привет, Назар! Как я могу помочь сегодня?"
+        },
+        "timestamp": 1739462264.3962638
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "hello"
+        },
+        "timestamp": 1739462265.105203
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Привет, Назар! Чем могу помочь?"
+        },
+        "timestamp": 1739462265.105203
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "hello"
+        },
+        "timestamp": 1739462265.99937
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Привет, Назар! Чем могу помочь сегодня?"
+        },
+        "timestamp": 1739462265.99937
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "/start"
+        },
+        "timestamp": 1739462267.033174
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Привет, Назар! Как я могу помочь сегодня?"
+        },
+        "timestamp": 1739462267.033174
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "dsds"
+        },
+        "timestamp": 1739462267.9832928
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Какие-то проблемы с написанием? Чем могу помочь, Назар?"
+        },
+        "timestamp": 1739462267.9832928
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "/context"
+        },
+        "timestamp": 1739462268.806786
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Вас зовут Назар. Чем могу помочь сегодня?"
+        },
+        "timestamp": 1739462268.806786
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "/help"
+        },
+        "timestamp": 1739462269.546674
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Чем именно вы хотели бы получить помощь, Назар?"
+        },
+        "timestamp": 1739462269.546674
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "Привет"
+        },
+        "timestamp": 1739462296.15112
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Привет, Назар! Как я могу помочь сегодня?"
+        },
+        "timestamp": 1739462296.15112
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "Я Назар, я люблю триатлон, мне нравится дизайн, яркие насыщенные цвета."
+        },
+        "timestamp": 1739462321.891768
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Приятно познакомиться, Назар! Как занимаетесь триатлоном давно? Расскажите, что вы проектируете или какие яркие цвета предпочитаете?"
+        },
+        "timestamp": 1739462321.891768
+    },
+    {
+        "role": "user",
+        "content": {
+            "role": "user",
+            "content": "/context"
+        },
+        "timestamp": 1739462326.740072
+    },
+    {
+        "role": "assistant",
+        "content": {
+            "role": "assistant",
+            "content": "Вы уточнили своё имя как Назар, любите триатлон, дизайн и предпочитаете яркие насыщенные цвета. Чем я могу помочь сегодня, Назар?"
+        },
+        "timestamp": 1739462326.740072
+    }
+]

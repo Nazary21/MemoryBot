@@ -49,37 +49,66 @@ session_durations = {
 logger.info(f"MOCK_MODE is set to: {MOCK_MODE}")
 
 async def get_chat_response(user_input: str) -> str:
-    if MOCK_MODE:
-        return f"Mock response to: {user_input}"
+    try:
+        # Get context from memory
+        short_term, history_context = memory_manager.get_context()
         
-    messages = [
-        {"role": "system", "content": """You are a helpful assistant with specific traits:
-            1. You maintain conversation history and context
-            2. You work in group of people, you know names of people you are talking to, you know relations between them
-            3. You know a lot of interesting facts about people you are talking to
-            4. You can analyze and summarize past conversations
-            5. You adapt your responses based on user preferences
-            6. You help with various tasks while maintaining a friendly tone
-            7. You remember important details about the user
+        # Format history context
+        history_summary = "\n".join([fact["summary"] for fact in history_context]) if history_context else ""
+        
+        # Start with system message
+        messages = [
+            {"role": "system", "content": f"""You are a helpful AI assistant with memory capabilities.
+                Important context about our conversation history:
+                {history_summary}
+                
+                Guidelines:
+                - Remember and use people's names and preferences
+                - Always respond in the same language as the user's message
+                - Keep track of important information shared in conversation
+                - If you learn someone's name, use it in future responses
+                - Be friendly and personable while maintaining professionalism"""}
+        ]
+        
+        # Add short-term memory - ensure proper string format
+        if short_term:
+            for msg in short_term:
+                if isinstance(msg, dict):
+                    # Extract string content from dict
+                    content = msg.get("content")
+                    if isinstance(content, dict):
+                        content = content.get("content", "")
+                    messages.append({"role": msg.get("role", "user"), "content": str(content)})
+                else:
+                    # Handle string messages
+                    messages.append({"role": "user", "content": str(msg)})
+        
+        # Add current message
+        messages.append({"role": "user", "content": user_input})
+        
+        if MOCK_MODE:
+            return f"Mock response to: {user_input}"
             
-            Important guidelines:
-            - Always reply in a language of the  user and remember his last language used for new conversation
-            - Keep responses concise but informative
-            - Use emojis occasionally to add warmth
-            - If context is unclear, politely ask for clarification
-            - Reference relevant past conversations when appropriate
-            """},
-        {"role": "user", "content": user_input}
-    ]
-    
-    # OpenAI's client is synchronous, we should run it in a thread pool
-    response = await asyncio.to_thread(
-        client.chat.completions.create,
-        model="gpt-3.5-turbo",
-        messages=messages
-    )
-    
-    return response.choices[0].message.content
+        # Get response from OpenAI
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
+            model="gpt-3.5-turbo",
+            messages=messages
+        )
+        
+        assistant_response = response.choices[0].message.content
+        
+        # Store messages as proper format
+        memory_manager.update_memory(
+            {"role": "user", "content": user_input},
+            {"role": "assistant", "content": assistant_response}
+        )
+        
+        return assistant_response
+        
+    except Exception as e:
+        logger.error(f"Chat response error: {e}", exc_info=True)
+        return "I apologize, but I encountered an error. Please try again."
 
 # Test endpoint for OpenAI
 @app.get("/test_openai")
@@ -96,30 +125,57 @@ async def message_handler(update: Update, context):
     try:
         user_input = update.message.text
         logger.info(f"Processing message: {user_input}")
+        
         response = await get_chat_response(user_input)
         logger.info(f"Got response: {response}")
+        
         await update.message.reply_text(response)
     except Exception as e:
         logger.error(f"Error in message handler: {e}", exc_info=True)
         await update.message.reply_text("An error occurred while processing your message.")
 
 # Webhook handler
-@app.post(f"/{TELEGRAM_TOKEN}")
-async def telegram_webhook(request: Request):
+@app.post("/{token:path}")
+async def telegram_webhook(token: str, request: Request):
     try:
+        # Verify token
+        if token != TELEGRAM_TOKEN:
+            logger.error(f"Invalid token: {token}")
+            return {"error": "Invalid token"}
+            
         body = await request.json()
-        logger.info(f"Received webhook: {body}")
+        logger.info(f"Received webhook with body: {body}")
         
-        # Create update object
-        update = Update.de_json(body, application.bot)  # Changed None to application.bot
+        # Create update object with bot instance
+        update = Update.de_json(body, application.bot)
         logger.info(f"Created update object: {update}")
         
-        # Process update directly instead of using queue
-        await application.process_update(update)
-        return {"status": "ok"}
+        if update.message and update.message.text:
+            logger.info(f"Processing message: {update.message.text}")
+            try:
+                response = await get_chat_response(update.message.text)
+                logger.info(f"Got response: {response}")
+                
+                # Send response
+                sent_message = await application.bot.send_message(
+                    chat_id=update.message.chat_id,
+                    text=response
+                )
+                logger.info(f"Sent message: {sent_message}")
+                return {"status": "ok"}
+            except Exception as e:
+                logger.error(f"Error processing message: {e}", exc_info=True)
+                await application.bot.send_message(
+                    chat_id=update.message.chat_id,
+                    text="I apologize, but I encountered an error. Please try again."
+                )
+                return {"error": "Message processing failed"}
+                
+        return {"status": "no message"}
+        
     except Exception as e:
         logger.error(f"Webhook error: {e}", exc_info=True)
-        raise
+        return {"error": str(e)}
 
 # Add these command handlers after the message_handler function
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
