@@ -14,6 +14,7 @@ import asyncio
 import os
 from dotenv import load_dotenv
 import json
+from contextlib import asynccontextmanager
 
 # Setup logging first
 logging.basicConfig(
@@ -151,12 +152,18 @@ async def telegram_webhook(token: str, request: Request):
         logger.info(f"Created update object: {update}")
         
         if update.message and update.message.text:
+            # Handle commands
+            if update.message.text.startswith('/'):
+                logger.info(f"Processing command: {update.message.text}")
+                await application.process_update(update)
+                return {"status": "command processed"}
+                
+            # Handle regular messages
             logger.info(f"Processing message: {update.message.text}")
             try:
                 response = await get_chat_response(update.message.text)
                 logger.info(f"Got response: {response}")
                 
-                # Send response
                 sent_message = await application.bot.send_message(
                     chat_id=update.message.chat_id,
                     text=response
@@ -191,8 +198,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - Show this help message\n"
         "/clear - Clear conversation history\n"
         "/session - Set session duration\n"
-        "/analyze - Analyze entire conversation history\n"
-        "/context - Show current historical context"
+        "/analyze - Analyze conversation history\n"
+        "/context - Show historical context\n"
+        "/midterm - Show mid-term memory stats\n"
+        "/shortterm - Show short-term memory stats\n"
+        "/wholehistory - Show whole history stats\n"
+        "/historycontext - Show full history context"
     )
 
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -251,6 +262,106 @@ async def show_context_command(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.error(f"Error showing context: {e}")
         await update.message.reply_text("Error retrieving historical context")
 
+# Add these new command handlers after other command handlers
+
+async def mid_term_history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show mid-term memory stats"""
+    try:
+        with open('memory/mid_term.json', 'r') as f:
+            mid_term = json.load(f)
+        
+        stats = {
+            "total_messages": len(mid_term),
+            "user_messages": len([m for m in mid_term if m.get("role") == "user"]),
+            "assistant_messages": len([m for m in mid_term if m.get("role") == "assistant"]),
+            "time_range": f"{mid_term[0]['timestamp']} - {mid_term[-1]['timestamp']}" if mid_term else "No messages"
+        }
+        
+        response = "📊 Mid-term Memory Stats:\n\n"
+        response += f"Total messages: {stats['total_messages']}\n"
+        response += f"User messages: {stats['user_messages']}\n"
+        response += f"Assistant messages: {stats['assistant_messages']}\n"
+        response += f"Time range: {stats['time_range']}"
+        
+        await update.message.reply_text(response)
+    except Exception as e:
+        logger.error(f"Error in mid_term_history_command: {e}")
+        await update.message.reply_text("Error retrieving mid-term history stats")
+
+async def short_term_history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show short-term memory stats"""
+    try:
+        with open('memory/short_term.json', 'r') as f:
+            short_term = json.load(f)
+        
+        stats = {
+            "total_messages": len(short_term),
+            "user_messages": len([m for m in short_term if m.get("role") == "user"]),
+            "assistant_messages": len([m for m in short_term if m.get("role") == "assistant"]),
+            "time_range": f"{short_term[0]['timestamp']} - {short_term[-1]['timestamp']}" if short_term else "No messages"
+        }
+        
+        response = "📊 Short-term Memory Stats:\n\n"
+        response += f"Total messages: {stats['total_messages']}\n"
+        response += f"User messages: {stats['user_messages']}\n"
+        response += f"Assistant messages: {stats['assistant_messages']}\n"
+        response += f"Time range: {stats['time_range']}"
+        
+        await update.message.reply_text(response)
+    except Exception as e:
+        logger.error(f"Error in short_term_history_command: {e}")
+        await update.message.reply_text("Error retrieving short-term history stats")
+
+async def whole_history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show whole history stats"""
+    try:
+        with open('memory/whole_history.json', 'r') as f:
+            whole_history = json.load(f)
+        
+        stats = {
+            "total_messages": len(whole_history),
+            "user_messages": len([m for m in whole_history if m.get("role") == "user"]),
+            "assistant_messages": len([m for m in whole_history if m.get("role") == "assistant"]),
+            "time_range": f"{whole_history[0]['timestamp']} - {whole_history[-1]['timestamp']}" if whole_history else "No messages"
+        }
+        
+        response = "📊 Whole History Stats:\n\n"
+        response += f"Total messages: {stats['total_messages']}\n"
+        response += f"User messages: {stats['user_messages']}\n"
+        response += f"Assistant messages: {stats['assistant_messages']}\n"
+        response += f"Time range: {stats['time_range']}"
+        
+        await update.message.reply_text(response)
+    except Exception as e:
+        logger.error(f"Error in whole_history_command: {e}")
+        await update.message.reply_text("Error retrieving whole history stats")
+
+async def history_context_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show full history context"""
+    try:
+        with open('memory/history_context.json', 'r') as f:
+            history_context = json.load(f)
+        
+        if not history_context:
+            await update.message.reply_text("No history context available")
+            return
+            
+        response = "📝 History Context:\n\n"
+        for entry in history_context:
+            response += f"🕒 {entry['timestamp']}\n"
+            response += f"Type: {entry['type']}\n"
+            response += f"Messages: {entry.get('message_count', 'N/A')}\n"
+            response += f"Summary:\n{entry['summary']}\n\n"
+            
+        # Telegram message limit is 4096 characters
+        if len(response) > 4000:
+            response = response[:3997] + "..."
+            
+        await update.message.reply_text(response)
+    except Exception as e:
+        logger.error(f"Error in history_context_command: {e}")
+        await update.message.reply_text("Error retrieving history context")
+
 # Update the application initialization section
 async def setup_commands():
     commands = [
@@ -259,7 +370,11 @@ async def setup_commands():
         BotCommand("clear", "Clear conversation history"),
         BotCommand("session", "Set session duration"),
         BotCommand("analyze", "Analyze conversation history"),
-        BotCommand("context", "Show historical context")
+        BotCommand("context", "Show historical context"),
+        BotCommand("midterm", "Show mid-term memory stats"),
+        BotCommand("shortterm", "Show short-term memory stats"),
+        BotCommand("wholehistory", "Show whole history stats"),
+        BotCommand("historycontext", "Show full history context")
     ]
     await application.bot.set_my_commands(commands)
 
@@ -267,7 +382,6 @@ async def setup_commands():
 if __name__ == "__main__":
     import uvicorn
     import asyncio
-    from contextlib import asynccontextmanager
     
     # Initialize application at module level
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -284,6 +398,10 @@ if __name__ == "__main__":
         application.add_handler(CommandHandler("session", set_session_command))
         application.add_handler(CommandHandler("analyze", analyze_history_command))
         application.add_handler(CommandHandler("context", show_context_command))
+        application.add_handler(CommandHandler("midterm", mid_term_history_command))
+        application.add_handler(CommandHandler("shortterm", short_term_history_command))
+        application.add_handler(CommandHandler("wholehistory", whole_history_command))
+        application.add_handler(CommandHandler("historycontext", history_context_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
         
         # Start the application

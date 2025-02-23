@@ -4,4 +4,7 @@ openai
 python-dotenv
 uvicorn
 aiohttp
-python-dateutil 
+python-dateutil
+httpx>=0.24.1
+pydantic>=2.0.0
+starlette>=0.27.0 
