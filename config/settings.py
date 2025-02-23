@@ -6,7 +6,12 @@ load_dotenv()
 
 # Bot Configuration
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+if not TELEGRAM_TOKEN:
+    raise ValueError("TELEGRAM_TOKEN not found in environment variables")
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY not found in environment variables")
 
 # Memory Configuration
 SESSION_DURATION = 6 * 3600  # 6 hours (default)
