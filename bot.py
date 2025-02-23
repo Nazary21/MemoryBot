@@ -144,26 +144,21 @@ async def health_check():
 @app.post("/{token:path}")
 async def telegram_webhook(token: str, request: Request):
     try:
+        logger.debug("Webhook called")
+        
         # Verify token
         if token != TELEGRAM_TOKEN:
             logger.error(f"Invalid token: {token}")
             return {"error": "Invalid token"}
             
         body = await request.json()
-        logger.info(f"Received webhook with body: {body}")
+        logger.debug(f"Webhook body: {body}")
         
         # Create update object with bot instance
         update = Update.de_json(body, application.bot)
-        logger.info(f"Created update object: {update}")
+        logger.debug(f"Parsed update: {update}")
         
         if update.message and update.message.text:
-            # Handle commands
-            if update.message.text.startswith('/'):
-                logger.info(f"Processing command: {update.message.text}")
-                await application.process_update(update)
-                return {"status": "command processed"}
-                
-            # Handle regular messages
             logger.info(f"Processing message: {update.message.text}")
             try:
                 response = await get_chat_response(update.message.text)
