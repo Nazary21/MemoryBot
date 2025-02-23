@@ -135,6 +135,11 @@ async def message_handler(update: Update, context):
         logger.error(f"Error in message handler: {e}", exc_info=True)
         await update.message.reply_text("An error occurred while processing your message.")
 
+# Add this near your other FastAPI routes
+@app.get("/")
+async def health_check():
+    return {"status": "ok", "message": "Bot is running"}
+
 # Webhook handler
 @app.post("/{token:path}")
 async def telegram_webhook(token: str, request: Request):
