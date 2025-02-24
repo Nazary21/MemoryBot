@@ -71,19 +71,25 @@ class MemoryManager:
             logger.error(f"Error updating memory: {e}", exc_info=True)
             raise
 
-    def get_context(self, category: Optional[str] = None) -> tuple[List[Dict], List[Dict]]:
+    def get_context(self) -> str:
         """Get current context from memory"""
         try:
             short_term = self._load_memory(self.short_term_file)
-            history_context = self._load_memory(self.history_file)
-            
-            if category:
-                history_context = [entry for entry in history_context if entry.get("category") == category]
-            
-            return short_term, history_context
+            return "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in short_term[-10:]])
         except Exception as e:
-            logger.error(f"Error getting context: {e}", exc_info=True)
-            return [], []  # Return empty lists on error
+            logger.error(f"Error getting context: {e}")
+            return ""
+
+    def get_history_context(self) -> str:
+        """Get historical context summary"""
+        try:
+            history_context = self._load_memory(self.history_file)
+            if not history_context:
+                return ""
+            return "\n".join([entry.get("summary", "") for entry in history_context])
+        except Exception as e:
+            logger.error(f"Error getting history context: {e}")
+            return ""
 
     def _load_memory(self, file_path: str) -> list:
         """Load memory from file with error handling"""

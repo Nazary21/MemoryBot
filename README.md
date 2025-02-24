@@ -1,14 +1,25 @@
-# AI Telegram Bot with Memory
+# AI Telegram Bot with Memory and Multi-Provider Support
 
-A Telegram bot powered by OpenAI's GPT-3.5 with conversation memory capabilities.
+A Telegram bot powered by multiple AI providers (OpenAI GPT-3.5 and Grok) with conversation memory capabilities and a web dashboard for configuration.
 
 ## Features
 
-- Natural language conversation using GPT-3.5
-- Short-term and mid-term memory
-- Historical context analysis
-- Multiple session duration options
-- Command system for memory management
+- Natural language conversation using multiple AI providers:
+  - OpenAI GPT-3.5
+  - Grok
+- Multi-level memory system:
+  - Short-term memory (recent messages)
+  - Mid-term memory (extended history, last 200 messages)
+  - Full conversation history
+  - Historical context analysis
+- Web dashboard for:
+  - AI provider configuration and switching
+  - Bot status monitoring
+  - Rule management
+  - Memory statistics
+- Group chat support with mention-based responses
+- Customizable session durations
+- Command system for memory and context management
 
 ## Setup
 
@@ -36,11 +47,12 @@ cp .env.example .env
 Edit `.env` file and add your:
 - Telegram Bot Token (from @BotFather)
 - OpenAI API Key
+- Grok API Key (optional)
 
 5. Initialize memory files
 ```bash
-mkdir -p memory
-touch memory/short_term.json memory/mid_term.json memory/whole_history.json memory/history_context.json
+mkdir -p memory config
+touch memory/short_term.json memory/mid_term.json memory/whole_history.json memory/history_context.json memory/rules.json config/ai_config.json
 ```
 
 ## Available Commands
@@ -48,20 +60,33 @@ touch memory/short_term.json memory/mid_term.json memory/whole_history.json memo
 - `/start` - Start the bot
 - `/help` - Show available commands
 - `/clear` - Clear conversation history
-- `/session` - Set session duration
+- `/session` - Set session duration (short: 3h, medium: 6h, long: 12h)
 - `/analyze` - Analyze conversation history
 - `/context` - Show historical context
 - `/midterm` - Show mid-term memory stats
 - `/shortterm` - Show short-term memory stats
 - `/wholehistory` - Show whole history stats
 - `/historycontext` - Show full history context
+- `/rules` - Show current bot rules
+- `/model` - Show current AI model
+
+## Web Dashboard
+
+The bot includes a web interface accessible at `/dashboard` with features for:
+- Monitoring bot status
+- Switching between AI providers
+- Managing API keys
+- Viewing memory statistics
+- Setting and managing conversation rules
+- Viewing recent messages
 
 ## Deployment
 
-The bot is configured for deployment on Railway.app. Make sure to set the following environment variables in your Railway project:
+The bot is configured for deployment on Railway.app. Set the following environment variables in your Railway project:
 
 - `TELEGRAM_TOKEN`
 - `OPENAI_API_KEY`
+- `GROK_API_KEY` (optional)
 - `PORT` (optional, defaults to 8000)
 - `MOCK_MODE` (optional, defaults to false)
 
@@ -78,6 +103,23 @@ uvicorn bot:app --reload
 - Use environment variables for all sensitive data
 - Regularly rotate your API keys
 - Monitor your API usage
+- The bot validates webhook tokens and includes error logging
+
+## Memory System
+
+The bot uses a sophisticated memory system:
+- Short-term: Recent messages from the current session
+- Mid-term: Last 200 messages for context analysis
+- Whole history: Complete conversation archive
+- History context: AI-generated summaries of important information
+
+## AI Provider System
+
+The bot supports multiple AI providers:
+- Easy switching between providers via dashboard
+- Provider-specific configuration
+- Automatic API key management
+- Fallback mechanisms if a provider is unavailable
 
 ## License
 

@@ -20,6 +20,7 @@ from fastapi.templating import Jinja2Templates
 from web.dashboard import router as dashboard_router
 from fastapi.responses import RedirectResponse
 from utils.rule_manager import RuleManager
+from utils.ai_response import AIResponseHandler
 
 # Setup logging first - move this to the very top, right after imports
 logging.basicConfig(
@@ -44,9 +45,6 @@ logging.getLogger('openai').setLevel(logging.INFO)
 # Load environment variables
 load_dotenv()
 MOCK_MODE = str(os.getenv("MOCK_MODE", "false")).lower() in ("true", "1", "yes")
-
-# Initialize OpenAI client
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # Initialize FastAPI
 app = FastAPI(
@@ -101,6 +99,8 @@ async def shutdown_event():
 
 # Initialize Memory Manager
 memory_manager = MemoryManager()
+rule_manager = RuleManager()
+ai_handler = AIResponseHandler()
 
 # Add these variables after imports
 DEFAULT_SESSION = 6 * 3600  # 6 hours
@@ -133,7 +133,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/shortterm - Show short-term memory stats\n"
         "/wholehistory - Show whole history stats\n"
         "/historycontext - Show full history context\n"
-        "/rules - Show current bot rules"
+        "/rules - Show current bot rules\n"
+        "/model - Show current AI model"
     )
 
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -297,6 +298,15 @@ async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in rules_command: {e}", exc_info=True)
         await update.message.reply_text("Error retrieving rules")
 
+async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display current AI model information"""
+    try:
+        model_info = ai_handler.get_current_model()
+        await update.message.reply_text(f"Current AI model: {model_info}")
+    except Exception as e:
+        logger.error(f"Error in model_command: {e}", exc_info=True)
+        await update.message.reply_text("Error retrieving model information")
+
 # Initialize Telegram application
 logger.info("Initializing Telegram application...")
 application = (ApplicationBuilder()
@@ -342,22 +352,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text="Bot is still initializing. Please try again in a moment."
                 )
                 return
-                
-            # Check OpenAI API key
-            if not OPENAI_API_KEY:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="OpenAI API key is not configured. Please set up the API key."
-                )
-                return
             
-            logger.info("Getting chat response from OpenAI...")
+            logger.info("Getting chat response...")
             try:
                 response = await get_chat_response(user_input)
-                logger.info(f"Got OpenAI response: {response}")
+                logger.info(f"Got response: {response}")
                 
                 if not response:
-                    raise ValueError("Empty response from OpenAI")
+                    raise ValueError("Empty response from AI provider")
                     
                 await context.bot.send_message(
                     chat_id=chat_id,
@@ -365,12 +367,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 logger.info("Message sent successfully")
                 
-            except OpenAIError as oe:
-                logger.error(f"OpenAI API error: {oe}", exc_info=True)
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="Sorry, there was an error communicating with OpenAI. Please try again."
-                )
             except Exception as e:
                 logger.error(f"Error getting chat response: {e}", exc_info=True)
                 await context.bot.send_message(
@@ -389,76 +385,45 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Failed to send error message: {send_error}", exc_info=True)
 
 async def get_chat_response(user_input: str) -> str:
+    """Get response from AI with context from memory"""
     try:
-        logger.info("Starting get_chat_response...")
         # Get context from memory
-        logger.info("Getting context from memory manager...")
-        short_term, history_context = memory_manager.get_context()
-        logger.info(f"Got short_term context with {len(short_term) if short_term else 0} messages")
-        logger.info(f"Got history context with {len(history_context) if history_context else 0} entries")
+        context = memory_manager.get_context()
+        history_context = memory_manager.get_history_context()
         
         # Format history context
-        history_summary = "\n".join([fact["summary"] for fact in history_context]) if history_context else ""
+        formatted_history = f"History context: {history_context}" if history_context else ""
         
-        # Get current rules from rule manager
-        rule_manager = RuleManager()
-        rules_text = rule_manager.get_formatted_rules()
-        logger.info(f"Using rules:\n{rules_text}")
+        # Get rules from rule manager
+        rules = rule_manager.get_rules()
+        formatted_rules = "Rules to follow:\n" + "\n".join([f"{i+1}. {rule.text}" for i, rule in enumerate(rules)])
         
-        # Start with system message
+        # Construct messages array
         messages = [
-            {"role": "system", "content": f"""You are a helpful AI assistant with memory capabilities.
-                Important context about our conversation history:
-                {history_summary}
-                
-                {rules_text}"""}
+            {
+                "role": "system",
+                "content": f"You are a helpful AI assistant. {formatted_rules}\n\nCurrent conversation context:\n{context}\n{formatted_history}"
+            },
+            {"role": "user", "content": user_input}
         ]
         
-        # Add short-term memory - ensure proper string format
-        if short_term:
-            logger.info("Adding short-term memory to messages...")
-            for msg in short_term:
-                if isinstance(msg, dict):
-                    # Extract string content from dict
-                    content = msg.get("content")
-                    if isinstance(content, dict):
-                        content = content.get("content", "")
-                    messages.append({"role": msg.get("role", "user"), "content": str(content)})
-                else:
-                    # Handle string messages
-                    messages.append({"role": "user", "content": str(msg)})
+        # Get response using AIResponseHandler
+        logger.info("Getting chat response from AI provider...")
+        response = await ai_handler.get_chat_response(messages)
+        logger.info(f"Got AI response: {response}")
         
-        # Add current message
-        messages.append({"role": "user", "content": user_input})
-        
-        if MOCK_MODE:
-            logger.info("Mock mode enabled, returning mock response")
-            return f"Mock response to: {user_input}"
+        # Store the response in memory
+        if response:
+            memory_manager.update_memory(
+                {"role": "user", "content": user_input},
+                {"role": "assistant", "content": response}
+            )
             
-        # Get response from OpenAI
-        logger.info("Calling OpenAI API...")
-        response = await asyncio.to_thread(
-            client.chat.completions.create,
-            model="gpt-3.5-turbo",
-            messages=messages
-        )
-        logger.info("Got response from OpenAI")
-        
-        assistant_response = response.choices[0].message.content
-        
-        # Store messages as proper format
-        logger.info("Updating memory with new messages...")
-        memory_manager.update_memory(
-            {"role": "user", "content": user_input},
-            {"role": "assistant", "content": assistant_response}
-        )
-        logger.info("Memory updated successfully")
-        
-        return assistant_response
+        return response
         
     except Exception as e:
-        logger.error(f"Chat response error: {e}", exc_info=True)
-        return "I apologize, but I encountered an error. Please try again."
+        logger.error(f"Error getting chat response: {str(e)}")
+        return "I apologize, but I encountered an error while processing your request. Please try again."
 
 # Test endpoint for OpenAI
 @app.get("/test_openai")
@@ -532,7 +497,8 @@ async def setup_commands():
             BotCommand("shortterm", "Show short-term memory stats"),
             BotCommand("wholehistory", "Show whole history stats"),
             BotCommand("historycontext", "Show full history context"),
-            BotCommand("rules", "Show current bot rules")
+            BotCommand("rules", "Show current bot rules"),
+            BotCommand("model", "Show current AI model")
         ]
         await application.bot.set_my_commands(commands)
         logger.info("Bot commands set up successfully")
@@ -554,6 +520,7 @@ try:
     application.add_handler(CommandHandler("wholehistory", whole_history_command))
     application.add_handler(CommandHandler("historycontext", history_context_command))
     application.add_handler(CommandHandler("rules", rules_command))
+    application.add_handler(CommandHandler("model", model_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     logger.info("Handlers added successfully")
 except Exception as e:
