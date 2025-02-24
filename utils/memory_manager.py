@@ -1,78 +1,155 @@
-import json
-import time
 import os
-from typing import List, Dict, Any
-from config.settings import (
-    SHORT_TERM_FILE,
-    MID_TERM_FILE,
-    WHOLE_HISTORY_FILE,
-    HISTORY_CONTEXT_FILE,
-    SESSION_DURATION,
-    MID_TERM_MESSAGE_LIMIT,
-    MEMORY_DIR
-)
+import json
+from datetime import datetime
+from typing import Dict, List, Optional
+import logging
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 class MemoryManager:
     def __init__(self):
-        # Ensure memory directory exists
-        os.makedirs(MEMORY_DIR, exist_ok=True)
+        self.memory_dir = "memory"
+        self.short_term_file = os.path.join(self.memory_dir, "short_term.json")
+        self.mid_term_file = os.path.join(self.memory_dir, "mid_term.json")
+        self.whole_history_file = os.path.join(self.memory_dir, "whole_history.json")
+        self.history_file = os.path.join(self.memory_dir, "history_context.json")
+        self._ensure_memory_files()
+
+    def _ensure_memory_files(self):
+        """Ensure memory directory and files exist"""
+        os.makedirs(self.memory_dir, exist_ok=True)
         
-    def _load_memory(self, file_path: str) -> List[Dict[str, Any]]:
+        # Initialize all memory files if they don't exist
+        files = [
+            self.short_term_file,
+            self.mid_term_file,
+            self.whole_history_file,
+            self.history_file
+        ]
+        
+        for file in files:
+            if not os.path.exists(file):
+                with open(file, 'w') as f:
+                    json.dump([], f)
+            else:
+                # Verify file is valid JSON
+                try:
+                    with open(file, 'r') as f:
+                        json.load(f)
+                except json.JSONDecodeError:
+                    # If file is corrupted, reinitialize it
+                    with open(file, 'w') as f:
+                        json.dump([], f)
+
+    def update_memory(self, user_message: Dict, assistant_message: Dict) -> None:
+        """Update all memory levels with new messages"""
         try:
-            with open(file_path, "r") as f:
+            # Add timestamp if not present
+            timestamp = datetime.now().isoformat()
+            if isinstance(user_message, dict) and "timestamp" not in user_message:
+                user_message["timestamp"] = timestamp
+            if isinstance(assistant_message, dict) and "timestamp" not in assistant_message:
+                assistant_message["timestamp"] = timestamp
+
+            # Update short-term memory
+            short_term = self._load_memory(self.short_term_file)
+            short_term.extend([user_message, assistant_message])
+            self._save_memory(self.short_term_file, short_term[-50:])  # Keep last 50 messages
+
+            # Update mid-term memory
+            mid_term = self._load_memory(self.mid_term_file)
+            mid_term.extend([user_message, assistant_message])
+            self._save_memory(self.mid_term_file, mid_term[-200:])  # Keep last 200 messages
+
+            # Update whole history
+            whole_history = self._load_memory(self.whole_history_file)
+            whole_history.extend([user_message, assistant_message])
+            self._save_memory(self.whole_history_file, whole_history)
+
+        except Exception as e:
+            logger.error(f"Error updating memory: {e}", exc_info=True)
+            raise
+
+    def get_context(self, category: Optional[str] = None) -> tuple[List[Dict], List[Dict]]:
+        """Get current context from memory"""
+        try:
+            short_term = self._load_memory(self.short_term_file)
+            history_context = self._load_memory(self.history_file)
+            
+            if category:
+                history_context = [entry for entry in history_context if entry.get("category") == category]
+            
+            return short_term, history_context
+        except Exception as e:
+            logger.error(f"Error getting context: {e}", exc_info=True)
+            return [], []  # Return empty lists on error
+
+    def _load_memory(self, file_path: str) -> list:
+        """Load memory from file with error handling"""
+        try:
+            with open(file_path, 'r') as f:
                 return json.load(f)
-        except FileNotFoundError:
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            logger.error(f"Error loading memory file {file_path}: {e}")
             return []
 
-    def _save_memory(self, file_path: str, data: List[Dict[str, Any]]) -> None:
-        with open(file_path, "w") as f:
-            json.dump(data, ensure_ascii=False, indent=4, fp=f)
+    def _save_memory(self, file_path: str, data: list) -> None:
+        """Save memory to file with error handling"""
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            logger.error(f"Error saving memory file {file_path}: {e}")
+            raise
 
-    def update_memory(self, user_input: str, assistant_response: str) -> None:
-        current_time = time.time()
-        message_pair = [
-            {"role": "user", "content": user_input, "timestamp": current_time},
-            {"role": "assistant", "content": assistant_response, "timestamp": current_time}
-        ]
+    def add_message(self, role: str, content: str) -> None:
+        """Add a new message to short term memory"""
+        try:
+            messages = self._load_memory(self.short_term_file)
+            
+            messages.append({
+                "timestamp": datetime.now().isoformat(),
+                "role": role,
+                "content": content
+            })
+            
+            # Keep only last 50 messages
+            messages = messages[-50:]
+            self._save_memory(self.short_term_file, messages)
+        except Exception as e:
+            logger.error(f"Error adding message to memory: {e}")
 
-        # Update whole history
-        whole_history = self._load_memory(WHOLE_HISTORY_FILE)
-        whole_history.extend(message_pair)
-        self._save_memory(WHOLE_HISTORY_FILE, whole_history)
+    def get_recent_messages(self, limit: int = 10) -> List[Dict]:
+        """Get recent messages from short term memory"""
+        try:
+            messages = self._load_memory(self.short_term_file)
+            return messages[-limit:]
+        except Exception as e:
+            logger.error(f"Error getting recent messages: {e}")
+            return []
 
-        # Update short-term memory
-        short_term = self._load_memory(SHORT_TERM_FILE)
-        short_term.extend(message_pair)
-        
-        # Filter out old messages from short-term
-        current_time = time.time()
-        short_term = [
-            msg for msg in short_term 
-            if current_time - msg["timestamp"] <= SESSION_DURATION
-        ]
-        self._save_memory(SHORT_TERM_FILE, short_term)
+    def add_context(self, context: str, category: str = "general") -> None:
+        """Add a new context entry to history"""
+        try:
+            history = self._load_memory(self.history_file)
+            
+            history.append({
+                "timestamp": datetime.now().isoformat(),
+                "category": category,
+                "summary": context  # Changed from context to summary to match expected format
+            })
+            
+            self._save_memory(self.history_file, history)
+        except Exception as e:
+            logger.error(f"Error adding context to history: {e}")
 
-        # Move old messages to mid-term
-        mid_term = self._load_memory(MID_TERM_FILE)
-        moved_to_mid = [
-            msg for msg in short_term 
-            if current_time - msg["timestamp"] > SESSION_DURATION
-        ]
-        
-        if moved_to_mid:
-            mid_term.extend(moved_to_mid)
-            # Keep only the last MID_TERM_MESSAGE_LIMIT messages
-            mid_term = mid_term[-MID_TERM_MESSAGE_LIMIT:]
-            self._save_memory(MID_TERM_FILE, mid_term)
+    def clear_short_term(self) -> None:
+        """Clear short term memory"""
+        with open(self.short_term_file, 'w') as f:
+            json.dump([], f)
 
-    def get_context(self) -> List[Dict[str, str]]:
-        short_term = self._load_memory(SHORT_TERM_FILE)
-        history_context = self._load_memory(HISTORY_CONTEXT_FILE)
-        
-        # Convert timestamps to readable format for the context
-        formatted_short_term = [
-            {"role": msg["role"], "content": msg["content"]}
-            for msg in short_term
-        ]
-        
-        return formatted_short_term, history_context 
+    def clear_history(self) -> None:
+        """Clear historical context"""
+        with open(self.history_file, 'w') as f:
+            json.dump([], f) 

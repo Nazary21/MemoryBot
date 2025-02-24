@@ -1,10 +1,13 @@
 fastapi
+uvicorn
 python-telegram-bot
 openai
 python-dotenv
-uvicorn
 aiohttp
-python-dateutil
+jinja2
+python-jose[cryptography]
+python-multipart
 httpx>=0.24.1
 pydantic>=2.0.0
-starlette>=0.27.0 
+starlette>=0.27.0
+python-dateutil

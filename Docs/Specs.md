@@ -16,15 +16,17 @@ The memory is divided into four levels:
 3. **Whole-history** – retains **all messages**.
 4. **History-context** – a condensed version of the conversation with **important facts**.
 
-To update `history_context`, **GPT-4** is periodically used to analyze `mid-term` and generate key summaries.
+To update `history_context`, **GPT-3.5** is periodically used to analyze `mid-term` and generate key summaries.
 
 ### 3. **Technical Implementation**
 **Tech Stack:**
 - Python 3.9+
-- FastAPI (to handle Telegram webhook)
-- OpenAI API (GPT-4 for response generation)
+- FastAPI (to handle Telegram webhook and web dashboard)
+- OpenAI API (GPT-3.5 for response generation)
 - Python-Telegram-Bot (Telegram API integration)
 - JSON files (for memory storage)
+- Jinja2 Templates (for web dashboard)
+- TailwindCSS (for dashboard styling)
 
 #### **Bot Workflow:**
 1. Telegram sends a message → server receives webhook.
@@ -33,9 +35,27 @@ To update `history_context`, **GPT-4** is periodically used to analyze `mid-term
 4. OpenAI API generates a response.
 5. The response is stored in `short_term` and `whole_history`.
 6. Older messages move to `mid-term`.
-7. If `mid-term` exceeds 200 messages → GPT-4 generates a summary, updating `history_context`.
+7. If `mid-term` exceeds 200 messages → GPT-3.5 generates a summary, updating `history_context`.
 
-### 4. **Deployment Options**
+### 4. **Web Dashboard**
+The bot includes a web interface for monitoring and management:
+- **Status Monitoring:**
+  - Telegram connection status
+  - OpenAI API status
+  - Memory statistics
+- **Recent Messages Display:**
+  - Shows latest conversations
+  - Indicates user/bot messages
+  - Includes timestamps
+- **GPT Rules Management:**
+  - Add/remove conversation rules
+  - Categorize rules by type
+  - Set rule priorities
+- **API Configuration:**
+  - Secure token management
+  - Connection settings
+
+### 5. **Deployment Options**
 The developer considers **budget-friendly hosting solutions**:
 - **Free options:** Google Cloud Run, Render, Railway (limited usage).
 - **Affordable VPS:** Contabo ($5/month), Hetzner, DigitalOcean.
@@ -46,7 +66,7 @@ The developer considers **budget-friendly hosting solutions**:
    ```sh
    sudo apt update
    sudo apt install python3 python3-pip
-   pip install openai fastapi uvicorn python-telegram-bot
+   pip install -r requirements.txt
    ```
 2. Start the server:
    ```sh
@@ -57,146 +77,141 @@ The developer considers **budget-friendly hosting solutions**:
    curl -F "url=https://server.com/{TOKEN}" https://api.telegram.org/bot{TOKEN}/setWebhook
    ```
 
-Telegram bot token: 8050570051:AAG4byICXKPopJ4pkngSfXLBEa7ZnJ4eTrs
-
-### 5. **Dynamic Short-Term Memory Configuration**
+### 6. **Dynamic Short-Term Memory Configuration**
 The bot supports **adjustable session memory**:
 - `set_session_duration("short")` → 3-hour short-term memory.
 - `set_session_duration("medium")` → 6 hours (default).
 - `set_session_duration("long")` → 12 hours.
 
-### 6. **Implementation Code (bot.py)**
-import os
-import openai
-import time
-import json
-from fastapi import FastAPI, Request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+### 7. **Bot Commands**
+Available commands:
+- `/start` - Start the bot
+- `/help` - Show available commands
+- `/clear` - Clear conversation history
+- `/session` - Set session duration
+- `/analyze` - Analyze conversation history
+- `/context` - Show historical context
+- `/midterm` - Show mid-term memory stats
+- `/shortterm` - Show short-term memory stats
+- `/wholehistory` - Show whole history stats
+- `/historycontext` - Show full history context
 
-# Настройки
-TOKEN = "твой_телеграм_токен"
-OPENAI_API_KEY = "твой_openai_ключ"
+### 8. **History Analysis**
+The bot includes periodic analysis of conversation history:
+- Daily analysis of whole history
+- Automatic summarization when history gets too large
+- GPT-3.5 generates comprehensive summaries
+- Results stored in `history_context`
 
-# Файлы памяти
-SHORT_TERM_FILE = "short_term.json"
-MID_TERM_FILE = "mid_term.json"
-WHOLE_HISTORY_FILE = "whole_history.json"
-HISTORY_CONTEXT_FILE = "history_context.json"
-
-SESSION_DURATION = 6 * 3600  # 6 часов
-
-# Функции загрузки и сохранения памяти
-def load_memory(file):
-    try:
-        with open(file, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
-
-def save_memory(file, data):
-    with open(file, "w") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
-# Обновление краткосрочной памяти по времени
-def update_short_term_memory(user_input, assistant_response):
-    short_memory = load_memory(SHORT_TERM_FILE)
-    mid_memory = load_memory(MID_TERM_FILE)
+Example analysis function:
+```python
+async def analyze_whole_history():
     whole_history = load_memory(WHOLE_HISTORY_FILE)
-
-    current_time = time.time()
-
-    short_memory.append({"role": "user", "content": user_input, "timestamp": current_time})
-    short_memory.append({"role": "assistant", "content": assistant_response, "timestamp": current_time})
-    whole_history.append({"role": "user", "content": user_input, "timestamp": current_time})
-    whole_history.append({"role": "assistant", "content": assistant_response, "timestamp": current_time})
-
-    short_memory = [msg for msg in short_memory if current_time - msg["timestamp"] <= SESSION_DURATION]
-    moved_to_mid = [msg for msg in short_memory if current_time - msg["timestamp"] > SESSION_DURATION]
-    
-    if moved_to_mid:
-        mid_memory.extend(moved_to_mid)
-
-    save_memory(SHORT_TERM_FILE, short_memory)
-    save_memory(MID_TERM_FILE, mid_memory)
-    save_memory(WHOLE_HISTORY_FILE, whole_history)
-
-# Получение ответа от OpenAI
-def get_chat_response(user_input):
-    short_memory = load_memory(SHORT_TERM_FILE)
-    history_context = load_memory(HISTORY_CONTEXT_FILE)
-
-    context_messages = short_memory
-    history_context_text = "\n".join([fact["summary"] for fact in history_context])
-
-    messages = [
-        {"role": "system", "content": "Ты умный ассистент. Важные факты:\n" + history_context_text},
-    ] + context_messages + [{"role": "user", "content": user_input}]
-
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=messages,
-        api_key=OPENAI_API_KEY
-    )
-
-    assistant_response = response["choices"][0]["message"]["content"]
-    update_short_term_memory(user_input, assistant_response)
-
-    return assistant_response
-
-# Инициализация Telegram бота
-app = FastAPI()
-
-@app.post(f"/{TOKEN}")
-async def telegram_webhook(request: Request):
-    update = Update.de_json(await request.json(), bot)
-    await application.update_queue.put(update)
-    return {"status": "ok"}
-
-async def message_handler(update: Update, context):
-    user_input = update.message.text
-    response = get_chat_response(user_input)
-    await update.message.reply_text(response)
-
-# Запуск бота
-application = Application.builder().token(TOKEN).build()
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
-### 7. **Conclusion**
-This solution enables the Telegram bot to efficiently **retain conversation memory** without overwhelming the model with unnecessary data. The memory system is **flexible and scalable**, making it suitable for future enhancements.
-
-This document can now be provided to Cursor.com for implementation.
-
-
-
-
-###8. Add analysis of  whole_history for improving of history_context?
-once a day or when whole_history gets to big, we can analyse whole history and make a new summary of history_context
-
-example: 
-
-def analyze_whole_history():
-    whole_history = load_memory(WHOLE_HISTORY_FILE)
-    history_context = load_memory(HISTORY_CONTEXT_FILE)
-
-    # Сливаем всю историю в один текст
     history_text = "\n".join([msg["content"] for msg in whole_history])
-
-    # Запрашиваем GPT-4 создать глобальное резюме
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
+    
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
         messages=[
-            {"role": "system", "content": "Создай краткий пересказ всей истории общения."},
+            {"role": "system", "content": "Create a concise summary of the conversation history."},
             {"role": "user", "content": history_text}
         ]
     )
-
-    global_summary = response["choices"][0]["message"]["content"]
-
-    # Очищаем старый `history_context` и записываем обновлённый
+    
+    global_summary = response.choices[0].message.content
     save_memory(HISTORY_CONTEXT_FILE, [{"summary": global_summary}])
+```
+
+### 9. **OpenAI Response Generation**
+The bot uses a structured approach to generate responses:
+```python
+async def get_chat_response(user_input: str) -> str:
+    # Get context from memory
+    short_term, history_context = memory_manager.get_context()
+    
+    # Format history context
+    history_summary = "\n".join([fact["summary"] for fact in history_context]) if history_context else ""
+    
+    # Construct messages array
+    messages = [
+        {"role": "system", "content": f"""You are a helpful AI assistant with memory capabilities.
+            Important context about our conversation history:
+            {history_summary}
+            
+            Guidelines:
+            - Remember and use people's names and preferences
+            - Always respond in the same language as the user's message
+            - Keep track of important information shared in conversation
+            - If you learn someone's name, use it in future responses
+            - Be friendly and personable while maintaining professionalism"""}
+    ]
+    
+    # Add conversation history
+    for msg in short_term:
+        messages.append({
+            "role": msg["role"],
+            "content": msg["content"]
+        })
+    
+    # Add current message
+    messages.append({"role": "user", "content": user_input})
+    
+    # Get response from OpenAI
+    response = await asyncio.to_thread(
+        client.chat.completions.create,
+        model="gpt-3.5-turbo",
+        messages=messages
+    )
+    
+    return response.choices[0].message.content
+```
+
+### 10. **Telegram Bot Initialization**
+The bot uses a structured initialization process:
+```python
+# Initialize application
+application = (ApplicationBuilder()
+              .token(TELEGRAM_TOKEN)
+              .concurrent_updates(True)
+              .build())
+
+async def init_application():
+    try:
+        # Initialize the application
+        await application.initialize()
+        await application.start()
+        
+        # Set up commands
+        commands = [
+            BotCommand("start", "Start the bot"),
+            BotCommand("help", "Show available commands"),
+            BotCommand("clear", "Clear conversation history"),
+            BotCommand("session", "Set session duration"),
+            BotCommand("analyze", "Analyze conversation history"),
+            BotCommand("context", "Show historical context"),
+            BotCommand("midterm", "Show mid-term memory stats"),
+            BotCommand("shortterm", "Show short-term memory stats"),
+            BotCommand("wholehistory", "Show whole history stats"),
+            BotCommand("historycontext", "Show full history context")
+        ]
+        await application.bot.set_my_commands(commands)
+        
+        # Add message handlers
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error during initialization: {e}")
+        return False
+
+### 11. **Security Considerations**
+- Environment variables for sensitive data
+- `.env` and `railway.json` kept local
+- Template files for configuration
+- Secure token handling in dashboard
+- API key protection
+- Git history cleaning for sensitive data
+- Webhook token verification
+- Error logging and sanitization
+- Rate limiting and request validation

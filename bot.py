@@ -15,6 +15,11 @@ import os
 from dotenv import load_dotenv
 import json
 from contextlib import asynccontextmanager
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from web.dashboard import router as dashboard_router
+from fastapi.responses import RedirectResponse
+from utils.rule_manager import RuleManager
 
 # Setup logging first - move this to the very top, right after imports
 logging.basicConfig(
@@ -45,10 +50,17 @@ client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # Initialize FastAPI
 app = FastAPI(
-    title="Telegram Bot API",
-    description="FastAPI application for Telegram bot with memory capabilities",
+    title="PykhBrain Bot",
+    description="Telegram bot with memory and web dashboard",
     version="1.0.0"
 )
+
+# Mount static files and templates
+os.makedirs("static", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Include dashboard routes
+app.include_router(dashboard_router, prefix="/dashboard")
 
 # Add startup event handler
 @app.on_event("startup")
@@ -120,7 +132,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/midterm - Show mid-term memory stats\n"
         "/shortterm - Show short-term memory stats\n"
         "/wholehistory - Show whole history stats\n"
-        "/historycontext - Show full history context"
+        "/historycontext - Show full history context\n"
+        "/rules - Show current bot rules"
     )
 
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -247,6 +260,11 @@ async def whole_history_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def history_context_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        # Force an update of the history context
+        logger.info("Forcing history context update...")
+        await analyze_whole_history()
+        
+        # Now read the updated context
         with open('memory/history_context.json', 'r') as f:
             history_context = json.load(f)
         
@@ -269,6 +287,16 @@ async def history_context_command(update: Update, context: ContextTypes.DEFAULT_
         logger.error(f"Error in history_context_command: {e}", exc_info=True)
         await update.message.reply_text("Error retrieving history context")
 
+async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display current bot rules"""
+    try:
+        rule_manager = RuleManager()
+        rules_text = rule_manager.get_formatted_rules()
+        await update.message.reply_text(rules_text)
+    except Exception as e:
+        logger.error(f"Error in rules_command: {e}", exc_info=True)
+        await update.message.reply_text("Error retrieving rules")
+
 # Initialize Telegram application
 logger.info("Initializing Telegram application...")
 application = (ApplicationBuilder()
@@ -283,26 +311,79 @@ is_initialized = False
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_input = update.message.text
+        chat_id = update.message.chat_id
+        is_group = update.message.chat.type in ["group", "supergroup"]
+        bot_username = context.bot.username
+        should_respond = True  # Default to True for private chats
+
         logger.info(f"Message handler called with input: {user_input}")
-        logger.info(f"Chat ID: {update.message.chat_id}")
+        logger.info(f"Chat ID: {chat_id}")
         logger.info(f"From user: {update.message.from_user.username}")
-        
-        logger.info("Getting chat response from OpenAI...")
-        response = await get_chat_response(user_input)
-        logger.info(f"Got OpenAI response: {response}")
-        
-        logger.info("Attempting to send message back to user...")
-        await context.bot.send_message(
-            chat_id=update.message.chat_id,
-            text=response
-        )
-        logger.info("Message sent successfully")
+        logger.info(f"Chat type: {update.message.chat.type}")
+
+        # Store message in memory regardless of whether we'll respond
+        memory_manager.add_message("user", user_input)
+
+        # In groups, only respond if bot is mentioned
+        if is_group:
+            mentions = update.message.entities or []
+            is_mentioned = any(
+                entity.type == "mention" and user_input[entity.offset:entity.offset + entity.length] == f"@{bot_username}"
+                for entity in mentions
+            )
+            should_respond = is_mentioned
+            logger.info(f"Group message - mentioned: {is_mentioned}")
+
+        if should_respond:
+            # Check if application is initialized
+            if not is_initialized:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="Bot is still initializing. Please try again in a moment."
+                )
+                return
+                
+            # Check OpenAI API key
+            if not OPENAI_API_KEY:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="OpenAI API key is not configured. Please set up the API key."
+                )
+                return
+            
+            logger.info("Getting chat response from OpenAI...")
+            try:
+                response = await get_chat_response(user_input)
+                logger.info(f"Got OpenAI response: {response}")
+                
+                if not response:
+                    raise ValueError("Empty response from OpenAI")
+                    
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=response
+                )
+                logger.info("Message sent successfully")
+                
+            except OpenAIError as oe:
+                logger.error(f"OpenAI API error: {oe}", exc_info=True)
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="Sorry, there was an error communicating with OpenAI. Please try again."
+                )
+            except Exception as e:
+                logger.error(f"Error getting chat response: {e}", exc_info=True)
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="Sorry, I encountered an unexpected error. Please try again."
+                )
+                
     except Exception as e:
         logger.error(f"Error in message handler: {e}", exc_info=True)
         try:
             await context.bot.send_message(
-                chat_id=update.message.chat_id,
-                text="An error occurred while processing your message."
+                chat_id=chat_id,
+                text="An error occurred while processing your message. Please try again later."
             )
         except Exception as send_error:
             logger.error(f"Failed to send error message: {send_error}", exc_info=True)
@@ -319,18 +400,18 @@ async def get_chat_response(user_input: str) -> str:
         # Format history context
         history_summary = "\n".join([fact["summary"] for fact in history_context]) if history_context else ""
         
+        # Get current rules from rule manager
+        rule_manager = RuleManager()
+        rules_text = rule_manager.get_formatted_rules()
+        logger.info(f"Using rules:\n{rules_text}")
+        
         # Start with system message
         messages = [
             {"role": "system", "content": f"""You are a helpful AI assistant with memory capabilities.
                 Important context about our conversation history:
                 {history_summary}
                 
-                Guidelines:
-                - Remember and use people's names and preferences
-                - Always respond in the same language as the user's message
-                - Keep track of important information shared in conversation
-                - If you learn someone's name, use it in future responses
-                - Be friendly and personable while maintaining professionalism"""}
+                {rules_text}"""}
         ]
         
         # Add short-term memory - ensure proper string format
@@ -394,6 +475,19 @@ async def test_openai():
 async def health_check():
     try:
         if not is_initialized:
+            return RedirectResponse(url="/dashboard", status_code=307)
+        if not application.running:
+            return RedirectResponse(url="/dashboard", status_code=307)
+        return RedirectResponse(url="/dashboard", status_code=307)
+    except Exception as e:
+        logger.error(f"Health check error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+# Add a separate health check endpoint
+@app.get("/health")
+async def health_status():
+    try:
+        if not is_initialized:
             return {"status": "initializing", "message": "Bot is starting up"}
         if not application.running:
             return {"status": "error", "message": "Bot is not running"}
@@ -437,7 +531,8 @@ async def setup_commands():
             BotCommand("midterm", "Show mid-term memory stats"),
             BotCommand("shortterm", "Show short-term memory stats"),
             BotCommand("wholehistory", "Show whole history stats"),
-            BotCommand("historycontext", "Show full history context")
+            BotCommand("historycontext", "Show full history context"),
+            BotCommand("rules", "Show current bot rules")
         ]
         await application.bot.set_my_commands(commands)
         logger.info("Bot commands set up successfully")
@@ -458,6 +553,7 @@ try:
     application.add_handler(CommandHandler("shortterm", short_term_history_command))
     application.add_handler(CommandHandler("wholehistory", whole_history_command))
     application.add_handler(CommandHandler("historycontext", history_context_command))
+    application.add_handler(CommandHandler("rules", rules_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     logger.info("Handlers added successfully")
 except Exception as e:

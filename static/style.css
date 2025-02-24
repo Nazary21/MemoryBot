@@ -1,0 +1,58 @@
+/* Custom styles on top of Tailwind */
+.status-card {
+    transition: all 0.3s ease;
+}
+
+.status-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.message-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.message-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.message-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.message-list::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.message-list::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+.rule-card {
+    transition: all 0.2s ease;
+}
+
+.rule-card:hover {
+    background-color: #f8fafc;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.btn {
+    transition: all 0.2s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+.btn:active {
+    transform: translateY(0);
+} 
