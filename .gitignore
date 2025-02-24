@@ -46,3 +46,5 @@ memory/*.json
 
 # Railway specific
 .railway/
+railway.json
+railway.json.local
