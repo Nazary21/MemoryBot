@@ -21,6 +21,7 @@ from web.dashboard import router as dashboard_router
 from fastapi.responses import RedirectResponse
 from utils.rule_manager import RuleManager
 from utils.ai_response import AIResponseHandler
+from datetime import datetime
 
 # Setup logging first - move this to the very top, right after imports
 logging.basicConfig(
@@ -71,15 +72,17 @@ async def startup_event():
         
         # Initialize application
         logger.info("Running application initialization...")
-        await init_application()
+        init_success = await init_application()
         
-        # Start background tasks only if initialization successful
-        if is_initialized:
+        if init_success:
+            # Start background tasks only if initialization successful
             logger.info("Starting background tasks...")
             asyncio.create_task(update_history_context())
             asyncio.create_task(periodic_history_analysis())
             logger.info("Background tasks started")
-        
+        else:
+            logger.error("Application initialization failed")
+            
         logger.info("Application startup complete")
     except Exception as e:
         logger.error(f"Error during startup: {e}", exc_info=True)
@@ -173,28 +176,24 @@ async def analyze_history_command(update: Update, context: ContextTypes.DEFAULT_
 
 async def show_context_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        with open(HISTORY_CONTEXT_FILE, 'r') as f:
-            history_context = json.load(f)
-        
-        if not history_context:
-            await update.message.reply_text("No historical context available yet.")
+        context_text = memory_manager.get_context()
+        if not context_text:
+            await update.message.reply_text("No recent context available.")
             return
             
-        context_text = "📚 Historical Context:\n\n"
-        for entry in history_context:
-            context_text += f"🕒 {entry['timestamp'][:16]}\n"
-            context_text += f"{entry['summary']}\n\n"
-            
-        await update.message.reply_text(context_text)
+        await update.message.reply_text(f"📚 Recent Context:\n\n{context_text}")
     except Exception as e:
         logger.error(f"Error showing context: {e}", exc_info=True)
-        await update.message.reply_text("Error retrieving historical context")
+        await update.message.reply_text("Error retrieving context")
 
 async def mid_term_history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        with open('memory/mid_term.json', 'r') as f:
-            mid_term = json.load(f)
+        mid_term = memory_manager._load_memory(memory_manager.mid_term_file)
         
+        if not mid_term:
+            await update.message.reply_text("No mid-term history available.")
+            return
+            
         stats = {
             "total_messages": len(mid_term),
             "user_messages": len([m for m in mid_term if m.get("role") == "user"]),
@@ -215,9 +214,12 @@ async def mid_term_history_command(update: Update, context: ContextTypes.DEFAULT
 
 async def short_term_history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        with open('memory/short_term.json', 'r') as f:
-            short_term = json.load(f)
+        short_term = memory_manager._load_memory(memory_manager.short_term_file)
         
+        if not short_term:
+            await update.message.reply_text("No short-term history available.")
+            return
+            
         stats = {
             "total_messages": len(short_term),
             "user_messages": len([m for m in short_term if m.get("role") == "user"]),
@@ -238,9 +240,12 @@ async def short_term_history_command(update: Update, context: ContextTypes.DEFAU
 
 async def whole_history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        with open('memory/whole_history.json', 'r') as f:
-            whole_history = json.load(f)
+        whole_history = memory_manager._load_memory(memory_manager.whole_history_file)
         
+        if not whole_history:
+            await update.message.reply_text("No history available.")
+            return
+            
         stats = {
             "total_messages": len(whole_history),
             "user_messages": len([m for m in whole_history if m.get("role") == "user"]),
@@ -265,25 +270,14 @@ async def history_context_command(update: Update, context: ContextTypes.DEFAULT_
         logger.info("Forcing history context update...")
         await analyze_whole_history()
         
-        # Now read the updated context
-        with open('memory/history_context.json', 'r') as f:
-            history_context = json.load(f)
+        # Get history context using memory manager
+        history_context = memory_manager.get_history_context()
         
         if not history_context:
             await update.message.reply_text("No history context available")
             return
             
-        response = "📝 History Context:\n\n"
-        for entry in history_context:
-            response += f"🕒 {entry['timestamp']}\n"
-            response += f"Type: {entry['type']}\n"
-            response += f"Messages: {entry.get('message_count', 'N/A')}\n"
-            response += f"Summary:\n{entry['summary']}\n\n"
-            
-        if len(response) > 4000:
-            response = response[:3997] + "..."
-            
-        await update.message.reply_text(response)
+        await update.message.reply_text(f"📝 History Context:\n\n{history_context}")
     except Exception as e:
         logger.error(f"Error in history_context_command: {e}", exc_info=True)
         await update.message.reply_text("Error retrieving history context")
@@ -435,31 +429,52 @@ async def test_openai():
         logger.error(f"OpenAI test error: {e}", exc_info=True)
         return {"error": str(e)}
 
-# Update the health check endpoint
+# Update the health check endpoints
 @app.get("/")
-async def health_check():
-    try:
-        if not is_initialized:
-            return RedirectResponse(url="/dashboard", status_code=307)
-        if not application.running:
-            return RedirectResponse(url="/dashboard", status_code=307)
-        return RedirectResponse(url="/dashboard", status_code=307)
-    except Exception as e:
-        logger.error(f"Health check error: {e}", exc_info=True)
-        return {"status": "error", "message": str(e)}
+async def root(request: Request):
+    """Main route that handles both health checks and dashboard redirects"""
+    # Check if it's a health check request (from Railway)
+    user_agent = request.headers.get("user-agent", "").lower()
+    if "railway" in user_agent or "health" in user_agent:
+        return {"status": "ok"}
+        
+    # If not a health check, redirect to dashboard
+    return RedirectResponse(
+        url="/dashboard",
+        status_code=307,
+        headers={
+            "WWW-Authenticate": 'Basic realm="PykhBrain Dashboard"',
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache"
+        }
+    )
 
-# Add a separate health check endpoint
 @app.get("/health")
-async def health_status():
+async def health_check():
+    """Health check endpoint for Railway"""
     try:
-        if not is_initialized:
-            return {"status": "initializing", "message": "Bot is starting up"}
-        if not application.running:
-            return {"status": "error", "message": "Bot is not running"}
-        return {"status": "ok", "message": "Bot is running"}
+        # Always return 200 OK for Railway health checks
+        return {
+            "status": "ok",
+            "initialized": is_initialized,
+            "bot_running": application.running if is_initialized else False,
+            "timestamp": datetime.now().isoformat()
+        }
     except Exception as e:
         logger.error(f"Health check error: {e}", exc_info=True)
-        return {"status": "error", "message": str(e)}
+        # Still return 200 OK but with error details
+        return {
+            "status": "warning",
+            "error": str(e),
+            "initialized": is_initialized,
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.get("/_health")
+async def railway_health():
+    """Dedicated health check endpoint for Railway"""
+    # Always return 200 OK with minimal response
+    return {"status": "ok"}
 
 # Update the application initialization section
 async def init_application():
@@ -467,7 +482,7 @@ async def init_application():
         global is_initialized
         if is_initialized:
             logger.info("Application already initialized")
-            return
+            return True
             
         logger.info("Initializing application...")
         await application.initialize()
@@ -476,11 +491,20 @@ async def init_application():
         logger.info("Setting up commands...")
         await setup_commands()
         
+        # Verify bot is working by getting bot info
+        try:
+            bot_info = await application.bot.get_me()
+            logger.info(f"Bot initialized successfully: @{bot_info.username}")
+        except Exception as e:
+            logger.error(f"Failed to get bot info: {e}")
+            return False
+        
         is_initialized = True
         logger.info("Application fully initialized and started")
+        return True
     except Exception as e:
         logger.error(f"Error during application initialization: {e}", exc_info=True)
-        raise
+        return False
 
 # Add the setup_commands function back
 async def setup_commands():

@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Request, Form, HTTPException, Depends
+from fastapi import APIRouter, Request, Form, HTTPException, Depends, status
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from typing import Dict, List
 import os
 import json
@@ -10,6 +11,7 @@ from config.settings import TELEGRAM_TOKEN
 from utils.memory_manager import MemoryManager
 from config.ai_providers import AIProviderManager
 import logging
+import secrets
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -17,6 +19,71 @@ rule_manager = RuleManager()
 memory_manager = MemoryManager()
 ai_manager = AIProviderManager()
 logger = logging.getLogger(__name__)
+
+# Initialize HTTP Basic Auth
+security = HTTPBasic(auto_error=False)
+
+def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
+    """Verify HTTP Basic Auth credentials"""
+    try:
+        # Get configured credentials
+        configured_username = os.getenv("DASHBOARD_USERNAME")
+        configured_password = os.getenv("DASHBOARD_PASSWORD")
+        
+        # Use default credentials if either is not configured
+        using_defaults = False
+        if not configured_username or not configured_password:
+            using_defaults = True
+            configured_username = "admin"
+            configured_password = "pykhbrain"
+            logger.info("Using default credentials (admin/pykhbrain)")
+        
+        # If no credentials provided, prompt for authentication
+        if not credentials:
+            logger.debug("No credentials provided, requesting authentication")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Please provide credentials",
+                headers={"WWW-Authenticate": 'Basic realm="PykhBrain Dashboard"'},
+            )
+        
+        # Compare credentials using constant-time comparison
+        try:
+            is_username_correct = secrets.compare_digest(
+                credentials.username.encode("utf-8"), 
+                configured_username.encode("utf-8")
+            )
+            is_password_correct = secrets.compare_digest(
+                credentials.password.encode("utf-8"), 
+                configured_password.encode("utf-8")
+            )
+        except Exception as e:
+            logger.error(f"Error comparing credentials: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials format",
+                headers={"WWW-Authenticate": 'Basic realm="PykhBrain Dashboard"'},
+            )
+        
+        if not (is_username_correct and is_password_correct):
+            logger.warning(f"Invalid credentials attempt for user: {credentials.username}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials",
+                headers={"WWW-Authenticate": 'Basic realm="PykhBrain Dashboard"'},
+            )
+        
+        logger.info(f"Successful login for user: {credentials.username}{' (using default credentials)' if using_defaults else ''}")
+        return {"username": credentials.username, "using_defaults": using_defaults}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected authentication error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during authentication"
+        )
 
 async def check_telegram_status() -> Dict[str, bool | str]:
     """Check Telegram connection status"""
@@ -81,7 +148,8 @@ def get_recent_messages(limit: int = 5) -> List[Dict]:
 
 @router.get("/", response_class=HTMLResponse)
 @router.get("", response_class=HTMLResponse)
-async def dashboard(request: Request):
+async def dashboard(request: Request, auth_info: dict = Depends(verify_credentials)):
+    """Dashboard main view with authentication"""
     # Get statuses
     telegram_status = await check_telegram_status()
     openai_status = await check_openai_status()
@@ -116,12 +184,14 @@ async def dashboard(request: Request):
             "rule_indices": {rule.text: i for i, rule in enumerate(rules)},
             "dashboard_prefix": "/dashboard",
             "active_provider": ai_manager.get_active_provider(),
-            "provider_info": provider_info
+            "provider_info": provider_info,
+            "username": auth_info["username"],
+            "using_default_auth": auth_info["using_defaults"]
         }
     )
 
 @router.post("/set_provider")
-async def set_provider(provider: str = Form(...)):
+async def set_provider(provider: str = Form(...), username: str = Depends(verify_credentials)):
     """Set active AI provider"""
     logger.info(f"Attempting to switch to provider: {provider}")
     try:
@@ -135,7 +205,7 @@ async def set_provider(provider: str = Form(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/update_config")
-async def update_config(api_key: str = Form(...)):
+async def update_config(api_key: str = Form(...), username: str = Depends(verify_credentials)):
     """Update provider API key"""
     try:
         provider = ai_manager.get_active_provider()
@@ -149,14 +219,18 @@ async def update_config(api_key: str = Form(...)):
 async def add_rule(
     rule_text: str = Form(...),
     category: str = Form(...),
-    priority: int = Form(0)
+    priority: int = Form(0),
+    username: str = Depends(verify_credentials)
 ):
     """Add a new GPT rule"""
     rule_manager.add_rule(rule_text, category, priority)
     return RedirectResponse(url="/dashboard", status_code=303)
 
 @router.post("/remove_rule")
-async def remove_rule(rule_index: int = Form(...)):
+async def remove_rule(
+    rule_index: int = Form(...),
+    username: str = Depends(verify_credentials)
+):
     """Remove a GPT rule"""
     rule_manager.remove_rule(rule_index)
     return RedirectResponse(url="/dashboard", status_code=303) 
