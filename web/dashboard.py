@@ -5,18 +5,24 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from typing import Dict, List
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from utils.rule_manager import RuleManager
 from config.settings import TELEGRAM_TOKEN
 from utils.memory_manager import MemoryManager
 from config.ai_providers import AIProviderManager
 import logging
 import secrets
+from utils.auth_utils import get_current_user
+from utils.database import Database
+from utils.ai_response import AIResponseHandler
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
-rule_manager = RuleManager()
-memory_manager = MemoryManager()
+
+# Initialize database and managers
+db = Database()
+rule_manager = RuleManager(db)
+memory_manager = MemoryManager(account_id=1, db=db)
 ai_manager = AIProviderManager()
 logger = logging.getLogger(__name__)
 
@@ -233,4 +239,174 @@ async def remove_rule(
 ):
     """Remove a GPT rule"""
     rule_manager.remove_rule(rule_index)
-    return RedirectResponse(url="/dashboard", status_code=303) 
+    return RedirectResponse(url="/dashboard", status_code=303)
+
+@router.get("/overview", response_class=HTMLResponse)
+async def dashboard_overview(
+    request: Request,
+    current_user = Depends(get_current_user),
+    db: Database = Depends()
+):
+    """Dashboard overview page"""
+    try:
+        # Get account info
+        account = await db.get_account(current_user['account_id'])
+        
+        # Get basic stats
+        memory_stats = await db.get_memory_stats(account['id'])
+        recent_messages = await db.get_memory_by_type(account['id'], 'short_term', limit=5)
+        
+        return templates.TemplateResponse(
+            "dashboard/overview.html",
+            {
+                "request": request,
+                "user": current_user,
+                "account": account,
+                "memory_stats": memory_stats,
+                "recent_messages": recent_messages,
+                "active_page": "overview"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/memory", response_class=HTMLResponse)
+async def memory_view(
+    request: Request,
+    current_user = Depends(get_current_user),
+    db: Database = Depends()
+):
+    """Memory management page"""
+    try:
+        account_id = current_user['account_id']
+        
+        memory_stats = await db.get_memory_stats(account_id)
+        recent_messages = await db.get_memory_by_type(account_id, 'short_term', limit=20)
+        history_context = await db.get_history_context(account_id)
+        
+        return templates.TemplateResponse(
+            "dashboard/memory.html",
+            {
+                "request": request,
+                "user": current_user,
+                "memory_stats": memory_stats,
+                "recent_messages": recent_messages,
+                "history_context": history_context,
+                "active_page": "memory"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/admin", response_class=HTMLResponse)
+async def admin_view(
+    request: Request,
+    current_user = Depends(get_current_user),
+    db: Database = Depends()
+):
+    """Admin dashboard"""
+    if not current_user['is_admin']:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
+    try:
+        # Get system-wide stats
+        accounts = await db.get_all_accounts()
+        total_messages = await db.get_total_message_count()
+        active_users = await db.get_active_users_count(last_days=7)
+        
+        return templates.TemplateResponse(
+            "dashboard/admin.html",
+            {
+                "request": request,
+                "user": current_user,
+                "accounts": accounts,
+                "total_messages": total_messages,
+                "active_users": active_users,
+                "active_page": "admin"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/settings", response_class=HTMLResponse)
+async def settings_view(
+    request: Request,
+    current_user = Depends(get_current_user),
+    db: Database = Depends()
+):
+    """Settings page view"""
+    try:
+        account_id = current_user['account_id']
+        
+        # Get current AI settings
+        ai_handler = AIResponseHandler(db)
+        current_settings = await ai_handler.get_account_model_settings(account_id)
+        available_models = ai_handler.get_available_models()
+        
+        # Get usage statistics
+        usage_stats = {
+            "current_period": await db.get_usage_stats(account_id, period="current"),
+            "previous_period": await db.get_usage_stats(account_id, period="previous")
+        }
+        
+        return templates.TemplateResponse(
+            "dashboard/settings.html",
+            {
+                "request": request,
+                "user": current_user,
+                "current_settings": current_settings,
+                "available_models": available_models,
+                "usage_stats": usage_stats,
+                "active_page": "settings"
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in settings view: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/update_model_settings")
+async def update_model_settings(
+    request: Request,
+    model_name: str = Form(...),
+    temperature: float = Form(...),
+    max_tokens: int = Form(...),
+    current_user = Depends(get_current_user),
+    db: Database = Depends()
+):
+    """Update AI model settings"""
+    try:
+        # Validate inputs
+        if not (0 <= temperature <= 1):
+            raise HTTPException(status_code=400, detail="Temperature must be between 0 and 1")
+            
+        if not (100 <= max_tokens <= 3000):
+            raise HTTPException(status_code=400, detail="Max tokens must be between 100 and 3000")
+            
+        ai_handler = AIResponseHandler(db)
+        available_models = ai_handler.get_available_models()
+        
+        if model_name not in available_models:
+            raise HTTPException(status_code=400, detail="Invalid model selected")
+        
+        # Update settings
+        settings = {
+            "model": model_name,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+        
+        success = await ai_handler.update_model_settings(current_user['account_id'], settings)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update settings")
+            
+        return RedirectResponse(
+            url="/dashboard/settings",
+            status_code=303
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating model settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) 
