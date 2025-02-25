@@ -1,7 +1,7 @@
 import os
 import sys
-import uvicorn
 import importlib.util
+from pathlib import Path
 
 # Print debugging information
 print("============ PYTHON ENVIRONMENT INFO ============")
@@ -42,15 +42,9 @@ if 'RAILWAY_ENVIRONMENT' in os.environ:
     print(f"RAILWAY_PUBLIC_DOMAIN: {os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'N/A')}")
     print("===============================================")
 
-# Print the command we're about to execute
-print(f"Starting uvicorn with host='0.0.0.0', port={port}")
-
 # Start the application
 if __name__ == "__main__":
     try:
-        # Import the app directly instead of using string reference
-        print("Attempting to import bot module...")
-        
         # Check if bot.py exists
         if not os.path.exists('bot.py'):
             print("ERROR: bot.py not found in current directory!")
@@ -58,6 +52,7 @@ if __name__ == "__main__":
             sys.exit(1)
             
         # Import the app using importlib
+        print("Attempting to import bot module...")
         spec = importlib.util.spec_from_file_location("bot", "bot.py")
         bot_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(bot_module)
@@ -66,9 +61,16 @@ if __name__ == "__main__":
         app = bot_module.app
         print("Successfully imported bot.app")
         
-        # Run using uvicorn's run function with the app object directly
+        # Import uvicorn here to avoid any potential issues
+        import uvicorn
+        
+        # Use uvicorn's Python API directly instead of the command-line interface
         print(f"Starting uvicorn with app object directly on port {port}")
-        uvicorn.run(app, host="0.0.0.0", port=port)
+        
+        # Configure and run the server
+        config = uvicorn.Config(app=app, host="0.0.0.0", port=port, log_level="info")
+        server = uvicorn.Server(config)
+        server.run()
     except Exception as e:
         print(f"ERROR starting application: {e}")
         import traceback
