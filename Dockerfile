@@ -12,8 +12,5 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . .
 
-# Make the startup script executable
-RUN chmod +x start.sh
-
-# Use the startup script
-CMD ["./start.sh"] 
+# Use the Python startup script
+CMD ["python", "start.py"] 
