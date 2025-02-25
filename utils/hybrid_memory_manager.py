@@ -8,16 +8,64 @@ from utils.database import Database
 logger = logging.getLogger(__name__)
 
 class HybridMemoryManager:
+    """
+    A hybrid memory management system that combines database and file-based storage.
+    
+    This class provides a robust memory system that:
+    1. Primarily uses a database (Supabase) for storage
+    2. Automatically falls back to file-based storage when database is unavailable
+    3. Supports multiple memory types: short_term, mid_term, and whole_history
+    4. Handles data migration between storage systems
+    
+    The fallback mechanism ensures the bot continues to function even when:
+    - Database connection is lost
+    - Database operations fail
+    - System is running in limited connectivity mode
+    
+    Memory Types:
+    - short_term: Recent messages (last 50)
+    - mid_term: Extended conversation context (last 200)
+    - whole_history: Complete conversation archive
+    """
+    
     VALID_MEMORY_TYPES = {'short_term', 'mid_term', 'whole_history'}
     
     def __init__(self, db: Database):
+        """
+        Initialize the hybrid memory manager.
+        
+        Args:
+            db: Database instance for primary storage
+            
+        The manager sets up both database and file-based storage systems:
+        1. Database connection through the provided Database instance
+        2. File-based backup system in the 'memory' directory
+        3. Legacy file manager for backward compatibility
+        """
         self.db = db
-        self.file_manager = MemoryManager(account_id=1, db=db)  # Original file-based manager with default account
+        # Initialize file manager with default account for fallback
+        self.file_manager = MemoryManager(account_id=1, db=db)
         self.memory_dir = "memory"
         os.makedirs(self.memory_dir, exist_ok=True)
         
     async def get_memory(self, chat_id: int, memory_type: str) -> List[Dict]:
-        """Get memory of specific type with fallback to file system"""
+        """
+        Retrieve memory of a specific type with automatic fallback.
+        
+        The retrieval process follows this sequence:
+        1. Validate memory type
+        2. Try to fetch from database
+        3. If database fails, check file system
+        4. If file data exists, attempt to migrate it to database
+        5. Return empty list if all attempts fail
+        
+        Args:
+            chat_id: The chat ID to get memory for
+            memory_type: Type of memory to retrieve (short_term/mid_term/whole_history)
+            
+        Returns:
+            List of message dictionaries
+        """
         if memory_type not in self.VALID_MEMORY_TYPES:
             raise ValueError(f"Invalid memory type: {memory_type}")
             
@@ -31,7 +79,7 @@ class HybridMemoryManager:
             # Fallback to file system
             file_memory = self._load_memory_from_file(memory_type)
             if file_memory:
-                # Migrate to database
+                # Migrate to database if possible
                 await self._migrate_memory_to_db(chat_id, file_memory, memory_type)
                 return await self.db.get_chat_memory(chat_id, memory_type)
                 
@@ -42,7 +90,21 @@ class HybridMemoryManager:
             return []
 
     async def add_message(self, chat_id: int, role: str, content: str) -> None:
-        """Add a message to all memory types"""
+        """
+        Add a message to all memory types with fallback handling.
+        
+        The message is stored in:
+        1. whole_history (complete archive)
+        2. short_term (recent context)
+        3. mid_term (if short_term exceeds threshold)
+        
+        If database storage fails, messages are saved to files.
+        
+        Args:
+            chat_id: The chat ID to store the message for
+            role: Message role (user/assistant/system)
+            content: The message content
+        """
         try:
             account = await self.db.get_or_create_temporary_account(chat_id)
             
@@ -77,10 +139,23 @@ class HybridMemoryManager:
         
         except Exception as e:
             logger.error(f"Error adding message: {e}")
+            # Fallback to file-based storage
+            try:
+                self.file_manager.add_message(role, content)
+            except Exception as file_error:
+                logger.error(f"File fallback also failed: {file_error}")
             raise
 
     def _load_memory_from_file(self, memory_type: str) -> List[Dict]:
-        """Load memory from file system"""
+        """
+        Load memory from file system (fallback storage).
+        
+        Args:
+            memory_type: Type of memory to load
+            
+        Returns:
+            List of messages from file storage
+        """
         try:
             file_path = self._get_memory_file(memory_type)
             if os.path.exists(file_path):
@@ -92,7 +167,19 @@ class HybridMemoryManager:
             return []
 
     async def _migrate_memory_to_db(self, chat_id: int, memory: List[Dict], memory_type: str):
-        """Migrate file-based memory to database"""
+        """
+        Migrate file-based memory to database storage.
+        
+        This process:
+        1. Creates/gets temporary account
+        2. Transfers messages to database
+        3. Records the migration
+        
+        Args:
+            chat_id: The chat ID to migrate memory for
+            memory: List of messages to migrate
+            memory_type: Type of memory being migrated
+        """
         try:
             account = await self.db.get_or_create_temporary_account(chat_id)
             
@@ -105,14 +192,22 @@ class HybridMemoryManager:
                     memory_type=memory_type
                 )
                 
-            # Record migration
+            # Record successful migration
             await self.db.record_migration(chat_id, account['id'])
             
         except Exception as e:
             logger.error(f"Error migrating memory to database: {e}")
 
     def _get_memory_file(self, memory_type: str) -> str:
-        """Get appropriate memory file path"""
+        """
+        Get the appropriate file path for a memory type.
+        
+        Args:
+            memory_type: Type of memory to get path for
+            
+        Returns:
+            Path to the memory file
+        """
         file_map = {
             'short_term': 'short_term.json',
             'mid_term': 'mid_term.json',

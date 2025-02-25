@@ -255,7 +255,7 @@ class RuleManager:
         except Exception as e:
             logger.error(f"Error getting rules synchronously: {e}")
             return []
-            
+
     def get_formatted_rules(self, rules: List[Rule] = None) -> str:
         """Format rules for display"""
         if rules is None:
@@ -437,8 +437,8 @@ class RuleManager:
             # Check if file exists
             if not os.path.exists(rules_file):
                 logger.error("Rules file doesn't exist")
-                return False
-            
+            return False
+
             # Load existing rules
             with open(rules_file, 'r') as f:
                 try:

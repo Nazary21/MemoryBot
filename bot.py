@@ -399,27 +399,61 @@ application = (ApplicationBuilder()
 
 # Message handler
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle incoming messages with hybrid memory support"""
     try:
+        chat_id = update.effective_chat.id
         user_input = update.message.text
-        chat_id = update.message.chat_id
         
-        logger.info(f"Processing message from chat_id {chat_id}: {user_input[:50]}...")
+        # Get or create memory manager for this chat
+        memory_manager = await get_memory_manager(chat_id)
         
-        # Check if Supabase is initialized
-        if db.supabase is None:
+        # Check if Supabase is available
+        if not db.supabase:
             logger.warning("Supabase client is not initialized. Using fallback mode.")
-            # Send a message to the user
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="I'm currently operating in limited mode due to a database connection issue. Basic functionality is available, but some features may not work properly."
+                text="I'm currently operating in limited mode due to a database connection issue. Basic functionality is available."
+            )
+        
+        try:
+            # Get conversation context from memory (works in both normal and fallback mode)
+            short_term_memory = await memory_manager.get_memory(chat_id, 'short_term')
+            
+            # Prepare messages for AI
+            messages = [
+                {"role": "system", "content": "You are a helpful assistant. Be concise and friendly."}
+            ]
+            
+            # Add context from memory
+            for msg in short_term_memory[-5:]:  # Last 5 messages for context
+                messages.append({
+                    "role": msg.get('role', 'user'),
+                    "content": msg.get('content', '')
+                })
+            
+            # Add current user message
+            messages.append({"role": "user", "content": user_input})
+            
+            # Get AI response
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=messages
             )
             
-            # Use file-based memory as fallback
+            response_text = response.choices[0].message.content
+            
+            # Store both user message and response in memory
+            await memory_manager.add_message(chat_id, "user", user_input)
+            await memory_manager.add_message(chat_id, "assistant", response_text)
+            
+            # Send response to user
+            await context.bot.send_message(chat_id=chat_id, text=response_text)
+            
+        except Exception as e:
+            logger.error(f"Error in message processing: {e}")
+            # Attempt super basic fallback if everything else fails
             try:
-                # Use direct OpenAI call as fallback
-                from openai import OpenAI
-                client = OpenAI(api_key=OPENAI_API_KEY)
-                
                 response = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
@@ -427,140 +461,40 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         {"role": "user", "content": user_input}
                     ]
                 )
-                
                 response_text = response.choices[0].message.content
-                await context.bot.send_message(chat_id=chat_id, text=response_text)
-                
-                # Try to store in file-based memory
-                try:
-                    memory_dir = "memory"
-                    os.makedirs(memory_dir, exist_ok=True)
-                    short_term_file = os.path.join(memory_dir, "short_term.json")
-                    
-                    # Load existing messages
-                    messages = []
-                    if os.path.exists(short_term_file):
-                        with open(short_term_file, 'r') as f:
-                            try:
-                                messages = json.load(f)
-                            except json.JSONDecodeError:
-                                messages = []
-                    
-                    # Add new messages
-                    messages.append({
-                        "role": "user",
-                        "content": user_input,
-                        "timestamp": datetime.now().isoformat()
-                    })
-                    messages.append({
-                        "role": "assistant",
-                        "content": response_text,
-                        "timestamp": datetime.now().isoformat()
-                    })
-                    
-                    # Save messages
-                    with open(short_term_file, 'w') as f:
-                        json.dump(messages, f)
-                        
-                except Exception as file_error:
-                    logger.error(f"Error storing messages in file: {file_error}")
-                
-                return
-            except Exception as fallback_error:
-                logger.error(f"Error in fallback mode: {fallback_error}")
                 await context.bot.send_message(
                     chat_id=chat_id,
-                    text="I'm experiencing technical difficulties. Please try again later."
+                    text=response_text + "\n\nNote: I encountered an error accessing my memory system."
                 )
-                return
-        
-        # Store message in hybrid memory
-        try:
-            await hybrid_memory.add_message(chat_id, "user", user_input)
-        except Exception as memory_error:
-            logger.error(f"Error storing message in memory: {memory_error}")
-            # Continue anyway to try to get a response
-        
-        # Get response using hybrid memory
-        try:
-            response = await get_chat_response(user_input, chat_id)
-        except Exception as response_error:
-            logger.error(f"Error getting chat response: {response_error}")
-            response = "I apologize, but I encountered an error processing your request. Please try again."
-        
-        if response:
-            await context.bot.send_message(chat_id=chat_id, text=response)
-            # Store bot's response
-            try:
-                await hybrid_memory.add_message(chat_id, "assistant", response)
-            except Exception as store_error:
-                logger.error(f"Error storing bot response: {store_error}")
-                # Continue anyway as the response was already sent
-            
+            except Exception as final_error:
+                logger.error(f"Final fallback also failed: {final_error}")
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="I apologize, but I encountered an error. Please try again later."
+                )
     except Exception as e:
-        logger.error(f"Error in message handler: {e}", exc_info=True)
+        logger.error(f"Critical error in message handler: {e}")
         try:
             await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="Sorry, I encountered an error. Please try again."
+                chat_id=chat_id,
+                text="I encountered a critical error. Please try again later."
             )
-        except Exception as send_error:
-            logger.error(f"Error sending error message: {send_error}")
+        except:
+            pass  # If we can't even send error message, just log and continue
 
-async def get_chat_response(user_input: str, chat_id: int) -> str:
+async def get_memory_manager(chat_id: int) -> HybridMemoryManager:
+    """Get or create a memory manager for a chat"""
     try:
-        # Get context from hybrid memory
-        context = await hybrid_memory.get_memory(chat_id, 'short_term')
-        history_context = await hybrid_memory.get_memory(chat_id, 'whole_history')
-        
-        # Format history context
-        formatted_history = (
-            f"History context: {history_context}" 
-            if history_context else ""
-        )
-        
-        # Get rules from rule manager
-        try:
-            # Get account for this chat
-            account = await db.get_or_create_temporary_account(chat_id)
-            account_id = account.get('id', 1)  # Default to 1 if not found
+        # Initialize database connection
+        if not hasattr(get_memory_manager, '_db'):
+            get_memory_manager._db = Database()
             
-            # Get rules for this account
-            rules = await rule_manager.get_rules(account_id=account_id)
-            
-            # If no rules found, try to create default rules
-            if not rules:
-                logger.info(f"No rules found for account {account_id}. Creating default rules.")
-                success = await rule_manager.create_default_rules(account_id)
-                if success:
-                    # Try to get rules again
-                    rules = await rule_manager.get_rules(account_id=account_id)
-                    logger.info(f"Created {len(rules)} default rules for account {account_id}")
-            
-            formatted_rules = "Rules to follow:\n" + "\n".join(
-                [f"{i+1}. {rule.text}" for i, rule in enumerate(rules)]
-            ) if rules else "Rules to follow:\nBe helpful and respectful."
-        except Exception as e:
-            logger.error(f"Error getting rules: {e}")
-            formatted_rules = "Rules to follow:\nBe helpful and respectful."
-        
-        # Construct messages array
-        messages = [
-            {
-                "role": "system",
-                "content": f"You are a helpful AI assistant. {formatted_rules}\n\n"
-                          f"Current conversation context:\n{context}\n{formatted_history}"
-            },
-            {"role": "user", "content": user_input}
-        ]
-        
-        # Get response using AIResponseHandler
-        response = await ai_handler.get_chat_response(1, messages)
-        return response
-        
+        # Create hybrid memory manager
+        return HybridMemoryManager(get_memory_manager._db)
     except Exception as e:
-        logger.error(f"Error getting chat response: {e}")
-        return "I apologize, but I encountered an error. Please try again."
+        logger.error(f"Error creating memory manager: {e}")
+        # Return a new instance anyway - it will work in fallback mode
+        return HybridMemoryManager(Database())
 
 # Test endpoint for OpenAI
 @app.get("/test_openai")
