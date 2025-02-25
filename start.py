@@ -10,6 +10,6 @@ print(f"Starting application with PORT={port}")
 print(f"Environment variables: {dict(os.environ)}")
 
 # Start the application
-cmd = ["uvicorn", "bot:app", "--host", "0.0.0.0", "--port", port]
-print(f"Running command: {' '.join(cmd)}")
+cmd = ["uvicorn", "bot:app", "--host", "0.0.0.0", "--port", int(port)]
+print(f"Running command: {' '.join(str(x) for x in cmd)}")
 subprocess.run(cmd) 
