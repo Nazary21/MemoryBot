@@ -22,4 +22,4 @@ ENV PORT=8000
 
 # Use Python script to start the application
 # This avoids shell variable substitution issues by handling the PORT in Python code
-CMD ["python", "start.py"] 
+CMD ["sh", "-c", "echo 'ENV VARIABLES:' && env && echo 'Starting app...' && uvicorn bot:app --host 0.0.0.0 --port ${PORT:-8000}"]
