@@ -10,11 +10,15 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements_filtered.txt && \
     pip install --no-cache-dir supabase==2.12.0 --no-deps
 
+# Copy entrypoint script first and make it executable
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
+# Copy the rest of the application
 COPY . .
 
 # Set a default PORT environment variable
 ENV PORT=8000
 
-# Use shell form of CMD to allow environment variable substitution
-# This directly executes uvicorn with the PORT variable
-CMD uvicorn bot:app --host 0.0.0.0 --port $PORT 
+# Use ENTRYPOINT for the script and CMD for default arguments
+ENTRYPOINT ["./entrypoint.sh"] 
