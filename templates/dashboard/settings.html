@@ -1,0 +1,114 @@
+{% extends "dashboard/base.html" %}
+
+{% block dashboard_content %}
+<div class="space-y-6">
+    <!-- AI Model Settings -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-2xl font-bold mb-4">AI Model Settings</h2>
+        
+        <form method="POST" action="/dashboard/update_model_settings" class="space-y-6">
+            <!-- Model Selection -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Model</label>
+                <select name="model_name" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                    {% for model in available_models %}
+                    <option value="{{ model }}" {% if model == current_settings.model %}selected{% endif %}>
+                        {{ model }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <p class="mt-1 text-sm text-gray-500">Select the AI model to use for responses.</p>
+            </div>
+
+            <!-- Temperature Setting -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Temperature ({{ current_settings.temperature }})
+                </label>
+                <input type="range" name="temperature" 
+                       min="0" max="1" step="0.1" 
+                       value="{{ current_settings.temperature }}"
+                       class="w-full"
+                       oninput="this.previousElementSibling.textContent = 'Temperature (' + this.value + ')'">
+                <p class="mt-1 text-sm text-gray-500">Lower values make responses more focused and deterministic, higher values make them more creative and varied.</p>
+            </div>
+
+            <!-- Max Tokens Setting -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Max Response Length (Tokens)
+                </label>
+                <select name="max_tokens" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value="500" {% if current_settings.max_tokens == 500 %}selected{% endif %}>Short (~375 words)</option>
+                    <option value="1000" {% if current_settings.max_tokens == 1000 %}selected{% endif %}>Medium (~750 words)</option>
+                    <option value="2000" {% if current_settings.max_tokens == 2000 %}selected{% endif %}>Long (~1500 words, default)</option>
+                    <option value="3000" {% if current_settings.max_tokens == 3000 %}selected{% endif %}>Very Long (~2250 words)</option>
+                </select>
+                <p class="mt-1 text-sm text-gray-500">Maximum length of bot responses. Longer responses may increase API costs.</p>
+            </div>
+
+            <div class="pt-4">
+                <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Usage Stats -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-2xl font-bold mb-4">Usage Statistics</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h3 class="text-lg font-semibold">Current Period</h3>
+                <dl class="mt-2 space-y-1">
+                    <div class="flex justify-between">
+                        <dt class="text-gray-600">Total Tokens Used:</dt>
+                        <dd class="font-medium">{{ usage_stats.current_period.total_tokens }}</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-gray-600">Messages Sent:</dt>
+                        <dd class="font-medium">{{ usage_stats.current_period.messages }}</dd>
+                    </div>
+                </dl>
+            </div>
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h3 class="text-lg font-semibold">Previous Period</h3>
+                <dl class="mt-2 space-y-1">
+                    <div class="flex justify-between">
+                        <dt class="text-gray-600">Total Tokens Used:</dt>
+                        <dd class="font-medium">{{ usage_stats.previous_period.total_tokens }}</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-gray-600">Messages Sent:</dt>
+                        <dd class="font-medium">{{ usage_stats.previous_period.messages }}</dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Add any client-side validation or interactivity here
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('form');
+        form.addEventListener('submit', function(e) {
+            const temperature = parseFloat(form.temperature.value);
+            const maxTokens = parseInt(form.max_tokens.value);
+            
+            if (temperature < 0 || temperature > 1) {
+                e.preventDefault();
+                alert('Temperature must be between 0 and 1');
+                return;
+            }
+            
+            if (maxTokens < 100 || maxTokens > 3000) {
+                e.preventDefault();
+                alert('Max tokens must be between 100 and 3000');
+                return;
+            }
+        });
+    });
+</script>
+{% endblock %} 

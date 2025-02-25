@@ -1,10 +1,17 @@
 import json
 import os
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 from datetime import datetime
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+@dataclass
+class Rule:
+    text: str
+    priority: int = 0
+    is_active: bool = True
 
 class GPTRule:
     def __init__(self, text: str, category: str = "General", priority: int = 0):
@@ -35,85 +42,75 @@ class GPTRule:
         return rule
 
 class RuleManager:
-    def __init__(self, rules_file: str = "memory/rules.json"):
-        self.rules_file = rules_file
-        self._ensure_rules_file_exists()
+    def __init__(self, db):
+        self.db = db
 
-    def _ensure_rules_file_exists(self):
-        """Ensure the rules file exists, create if it doesn't"""
-        os.makedirs(os.path.dirname(self.rules_file), exist_ok=True)
-        if not os.path.exists(self.rules_file):
-            default_rules = [
-                GPTRule("Always respond in the same language as the user's message", "Language", 1),
-                GPTRule("Remember and use people's names when they introduce themselves", "Personalization", 1),
-                GPTRule("Be helpful and friendly while maintaining a professional tone", "Tone", 1),
-                GPTRule("Share conversation history and context openly when asked", "Memory", 1),
-                GPTRule("Keep track of important information shared in conversation", "Memory", 0),
-                GPTRule("Use emojis appropriately to make responses more engaging", "Tone", 0)
-            ]
-            with open(self.rules_file, 'w') as f:
-                json.dump([rule.to_dict() for rule in default_rules], f, indent=2)
-            logger.info("Created rules file with default rules")
-
-    def get_rules(self) -> List[GPTRule]:
-        """Get all rules from the file"""
+    async def get_rules(self, account_id: int) -> List[Rule]:
+        """Get active rules for an account"""
         try:
-            with open(self.rules_file, 'r') as f:
-                rules_data = json.load(f)
-                return [GPTRule.from_dict(rule_data) for rule_data in rules_data]
+            result = await self.db.supabase.table('bot_rules').select(
+                '*'
+            ).eq('account_id', account_id).eq('is_active', True).order('priority', desc=True).execute()
+            
+            return [Rule(
+                text=rule['rule_text'],
+                priority=rule['priority'],
+                is_active=rule['is_active']
+            ) for rule in result.data]
         except Exception as e:
-            logger.error(f"Error reading rules: {e}")
+            logger.error(f"Error getting rules: {e}")
             return []
 
-    def add_rule(self, rule: str, category: str = "General", priority: int = 0) -> bool:
-        """Add a new rule with category and priority"""
+    async def add_rule(self, account_id: int, rule_text: str, priority: int = 0) -> Optional[Rule]:
+        """Add a new rule for an account"""
         try:
-            rules = self.get_rules()
-            new_rule = GPTRule(text=rule, category=category, priority=priority)
-            rules.append(new_rule)
-            with open(self.rules_file, 'w') as f:
-                json.dump([r.to_dict() for r in rules], f, indent=2)
-            logger.info(f"Added new rule in category {category}")
-            return True
+            result = await self.db.supabase.table('bot_rules').insert({
+                'account_id': account_id,
+                'rule_text': rule_text,
+                'priority': priority
+            }).execute()
+            
+            rule_data = result.data[0]
+            return Rule(
+                text=rule_data['rule_text'],
+                priority=rule_data['priority'],
+                is_active=rule_data['is_active']
+            )
         except Exception as e:
             logger.error(f"Error adding rule: {e}")
-            return False
+            return None
 
-    def remove_rule(self, index: int) -> bool:
-        """Remove a rule by its index"""
+    async def update_rule(self, rule_id: int, account_id: int, updates: Dict) -> bool:
+        """Update an existing rule"""
         try:
-            rules = self.get_rules()
-            if 0 <= index < len(rules):
-                removed_rule = rules.pop(index)
-                with open(self.rules_file, 'w') as f:
-                    json.dump([r.to_dict() for r in rules], f, indent=2)
-                logger.info(f"Removed rule: {removed_rule.text}")
-                return True
-            else:
-                logger.error(f"Invalid rule index: {index}")
-                return False
+            await self.db.supabase.table('bot_rules').update(
+                updates
+            ).eq('id', rule_id).eq('account_id', account_id).execute()
+            return True
         except Exception as e:
-            logger.error(f"Error removing rule: {e}")
+            logger.error(f"Error updating rule: {e}")
             return False
 
-    def get_formatted_rules(self) -> str:
-        """Get rules formatted for GPT context"""
-        rules = self.get_rules()
+    async def delete_rule(self, rule_id: int, account_id: int) -> bool:
+        """Delete a rule"""
+        try:
+            await self.db.supabase.table('bot_rules').delete().eq(
+                'id', rule_id
+            ).eq('account_id', account_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting rule: {e}")
+            return False
+
+    def get_formatted_rules(self, rules: List[Rule]) -> str:
+        """Format rules for display"""
         if not rules:
-            return "No specific rules set."
+            return "No active rules configured."
             
-        # Sort rules by priority (1 = core rules, 0 = optional rules)
-        core_rules = [r.text for r in rules if r.priority == 1]
-        optional_rules = [r.text for r in rules if r.priority == 0]
-        
-        formatted = "Rules to follow:\n"
-        
-        if core_rules:
-            formatted += "\nCore rules (must follow):\n"
-            formatted += "\n".join(f"- {rule}" for rule in core_rules)
-            
-        if optional_rules:
-            formatted += "\nOptional rules (when applicable):\n"
-            formatted += "\n".join(f"- {rule}" for rule in optional_rules)
-            
+        formatted = "Current Bot Rules:\n\n"
+        for i, rule in enumerate(rules, 1):
+            formatted += f"{i}. {rule.text}"
+            if rule.priority > 0:
+                formatted += f" (Priority: {rule.priority})"
+            formatted += "\n"
         return formatted 

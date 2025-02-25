@@ -8,7 +8,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 class MemoryManager:
-    def __init__(self):
+    def __init__(self, account_id: int, db):
+        self.account_id = account_id
+        self.db = db
         self.memory_dir = "memory"
         self.short_term_file = os.path.join(self.memory_dir, "short_term.json")
         self.mid_term_file = os.path.join(self.memory_dir, "mid_term.json")
@@ -158,4 +160,13 @@ class MemoryManager:
     def clear_history(self) -> None:
         """Clear historical context"""
         with open(self.history_file, 'w') as f:
-            json.dump([], f) 
+            json.dump([], f)
+
+    async def add_to_memory(self, message):
+        await self.db.execute(
+            """
+            INSERT INTO chat_history (account_id, message) 
+            VALUES ($1, $2)
+            """,
+            self.account_id, message
+        ) 

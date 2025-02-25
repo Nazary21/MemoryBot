@@ -1,0 +1,66 @@
+{% extends "dashboard/base.html" %}
+
+{% block dashboard_content %}
+<div class="space-y-6">
+    <!-- Memory Stats -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-2xl font-bold mb-4">Memory Statistics</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {% for type, stats in memory_stats.items() %}
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h3 class="text-lg font-semibold capitalize">{{ type.replace('_', ' ') }}</h3>
+                <dl class="mt-2 space-y-1">
+                    <div class="flex justify-between">
+                        <dt class="text-gray-600">Total Messages:</dt>
+                        <dd class="font-medium">{{ stats.total_messages }}</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-gray-600">User Messages:</dt>
+                        <dd class="font-medium">{{ stats.user_messages }}</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-gray-600">Bot Messages:</dt>
+                        <dd class="font-medium">{{ stats.assistant_messages }}</dd>
+                    </div>
+                </dl>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Recent Conversations -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-2xl font-bold mb-4">Recent Conversations</h2>
+        <div class="space-y-4">
+            {% for message in recent_messages %}
+            <div class="flex space-x-3 {% if message.role == 'assistant' %}bg-blue-50{% else %}bg-gray-50{% endif %} p-3 rounded-lg">
+                <div class="flex-shrink-0">
+                    <div class="h-10 w-10 rounded-full bg-{% if message.role == 'assistant' %}blue{% else %}gray{% endif %}-200 flex items-center justify-center">
+                        {{ message.role[0].upper() }}
+                    </div>
+                </div>
+                <div class="flex-1">
+                    <p class="text-sm font-medium text-gray-900">{{ message.role|title }}</p>
+                    <p class="mt-1 text-sm text-gray-600">{{ message.content }}</p>
+                    <p class="mt-1 text-xs text-gray-500">{{ message.timestamp|format_datetime }}</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Context Summary -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-2xl font-bold mb-4">Historical Context</h2>
+        <div class="space-y-4">
+            {% for context in history_context %}
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <p class="text-gray-600">{{ context.summary }}</p>
+                <p class="mt-2 text-sm text-gray-500">Category: {{ context.category }}</p>
+                <p class="text-sm text-gray-500">Created: {{ context.created_at|format_datetime }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %} 

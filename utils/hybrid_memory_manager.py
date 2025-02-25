@@ -12,7 +12,7 @@ class HybridMemoryManager:
     
     def __init__(self, db: Database):
         self.db = db
-        self.file_manager = MemoryManager()  # Original file-based manager
+        self.file_manager = MemoryManager(account_id=1, db=db)  # Original file-based manager with default account
         self.memory_dir = "memory"
         os.makedirs(self.memory_dir, exist_ok=True)
         

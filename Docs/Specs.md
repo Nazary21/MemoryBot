@@ -215,3 +215,230 @@ async def init_application():
 - Webhook token verification
 - Error logging and sanitization
 - Rate limiting and request validation
+
+### 12. **Multi-Tenant System Architecture**
+
+#### Overview
+The bot supports multiple isolated instances (tenants) through a combination of Telegram groups and user authentication. This allows users to:
+- Access their bot instance through Telegram groups
+- Manage their instance through a web dashboard
+- Maintain access even if Telegram group changes
+- Have isolated data, settings, and features
+
+#### Authentication System
+1. **Primary Identifiers:**
+   - Telegram Chat ID (for bot interactions)
+   - User Account (for dashboard access)
+
+2. **Account Structure:**
+   ```sql
+   -- Core account table
+   CREATE TABLE accounts (
+       id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+       name VARCHAR(255),
+       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+   );
+
+   -- Telegram chat associations
+   CREATE TABLE account_chats (
+       account_id BIGINT REFERENCES accounts(id),
+       telegram_chat_id BIGINT UNIQUE NOT NULL,
+       chat_name VARCHAR(255),
+       is_active BOOLEAN DEFAULT TRUE,
+       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (account_id, telegram_chat_id)
+   );
+
+   -- User authentication
+   CREATE TABLE account_users (
+       id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+       account_id BIGINT REFERENCES accounts(id),
+       email VARCHAR(255) UNIQUE NOT NULL,
+       hashed_password VARCHAR(255) NOT NULL,
+       is_admin BOOLEAN DEFAULT FALSE,
+       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+   );
+
+   -- Account data isolation
+   CREATE TABLE chat_history (
+       id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+       account_id BIGINT REFERENCES accounts(id),
+       telegram_chat_id BIGINT,
+       role VARCHAR(50) NOT NULL,
+       content TEXT NOT NULL,
+       memory_type VARCHAR(50), -- 'short_term', 'mid_term', 'whole_history'
+       timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+   );
+
+   -- Account settings
+   CREATE TABLE account_settings (
+       account_id BIGINT REFERENCES accounts(id),
+       setting_key VARCHAR(255),
+       setting_value JSONB,
+       PRIMARY KEY (account_id, setting_key)
+   );
+   ```
+
+#### Registration and Authentication Flow
+
+##### Initial User Experience
+1. **First Contact:**
+   ```
+   Welcome! 👋 I'm PykhBrain Bot. To get started, you have two options:
+
+   1️⃣ Quick Start: Just start chatting! I'll create a temporary account linked to this chat.
+   2️⃣ Full Access: Type /register to create a permanent account with:
+      - Web dashboard access
+      - Multiple chat groups
+      - Persistent settings
+      - Advanced features
+   ```
+
+2. **Temporary Account:**
+   - Created automatically on first interaction
+   - Full bot functionality
+   - Limited to single chat
+   - Data persists for 30 days
+   - Can upgrade to permanent account
+
+3. **Registration Process:**
+   - Via `/register` command
+   - Email-based verification
+   - Magic link authentication
+   - Automatic migration of temporary data
+
+##### Account Types
+1. **Temporary Account:**
+   ```sql
+   CREATE TABLE temporary_accounts (
+       id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+       telegram_chat_id BIGINT UNIQUE NOT NULL,
+       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+       expires_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP + INTERVAL '30 days'
+   );
+   ```
+
+2. **Permanent Account:**
+   [Previous account structure remains unchanged]
+
+#### Migration Strategy
+
+##### Phase 1: Database Setup
+1. **Create New Tables:**
+   - Keep existing tables
+   - Add new multi-tenant tables
+   - Create migration mappings
+
+2. **Data Migration:**
+   ```sql
+   -- Migration mapping table
+   CREATE TABLE migration_mapping (
+       old_chat_id BIGINT UNIQUE,
+       new_account_id BIGINT REFERENCES accounts(id),
+       migration_status VARCHAR(50),
+       migrated_at TIMESTAMP WITH TIME ZONE
+   );
+   ```
+
+##### Phase 2: Functional Migration
+1. **Memory Manager Updates:**
+   - Add multi-tenant support
+   - Maintain backward compatibility
+   - Gradual feature transition
+
+2. **Bot Command Updates:**
+   - Keep existing commands
+   - Add new tenant-aware versions
+   - Graceful fallback support
+
+##### Phase 3: Feature Transition
+1. **Temporary to Permanent:**
+   ```python
+   async def migrate_to_permanent(temp_account_id, new_account_id):
+       # Migrate chat history
+       await db.execute("""
+           INSERT INTO chat_history (account_id, content, role, memory_type)
+           SELECT $2, content, role, memory_type 
+           FROM temporary_chat_history 
+           WHERE temp_account_id = $1
+       """, temp_account_id, new_account_id)
+
+       # Migrate settings
+       await db.execute("""
+           INSERT INTO account_settings (account_id, setting_key, setting_value)
+           SELECT $2, setting_key, setting_value 
+           FROM temporary_settings 
+           WHERE temp_account_id = $1
+       """, temp_account_id, new_account_id)
+   ```
+
+2. **Legacy Support:**
+   - Maintain file-based fallback
+   - Automatic data migration
+   - User notification system
+
+#### Implementation Phases
+
+##### Phase 1: Foundation (Current)
+1. **Database:**
+   - Set up Supabase connection
+   - Create core tables
+   - Add migration support
+
+2. **Basic Multi-tenant:**
+   - Temporary account support
+   - Basic isolation
+   - Registration flow
+
+##### Phase 2: Enhancement
+1. **Dashboard:**
+   - User authentication
+   - Account management
+   - Settings interface
+
+2. **Features:**
+   - Multiple group support
+   - Advanced settings
+   - Custom commands
+
+##### Phase 3: Optimization
+1. **Performance:**
+   - Query optimization
+   - Caching layer
+   - Connection pooling
+
+2. **Monitoring:**
+   - Usage analytics
+   - Error tracking
+   - Performance metrics
+
+#### Backward Compatibility
+1. **File System Fallback:**
+   ```python
+   class HybridMemoryManager:
+       async def get_memory(self, chat_id):
+           # Try database first
+           memory = await db.get_chat_memory(chat_id)
+           if not memory:
+               # Fallback to file system
+               memory = self._load_memory_from_file(chat_id)
+           return memory
+   ```
+
+2. **Automatic Migration:**
+   ```python
+   async def ensure_account(chat_id):
+       # Check for existing account
+       account = await db.get_account_by_chat(chat_id)
+       if not account:
+           # Create temporary account
+           account = await db.create_temporary_account(chat_id)
+           # Migrate existing file data if any
+           await migrate_file_data(chat_id, account.id)
+       return account
+   ```
+
+3. **Data Integrity:**
+   - Validation of migrated data
+   - Conflict resolution
+   - Audit logging

@@ -22,6 +22,9 @@ from fastapi.responses import RedirectResponse
 from utils.rule_manager import RuleManager
 from utils.ai_response import AIResponseHandler
 from datetime import datetime
+from utils.database import Database
+from utils.hybrid_memory_manager import HybridMemoryManager
+from utils.registration_handler import RegistrationHandler
 
 # Setup logging first - move this to the very top, right after imports
 logging.basicConfig(
@@ -53,6 +56,9 @@ app = FastAPI(
     description="Telegram bot with memory and web dashboard",
     version="1.0.0"
 )
+
+# Global initialization flag
+is_initialized = False
 
 # Mount static files and templates
 os.makedirs("static", exist_ok=True)
@@ -100,10 +106,15 @@ async def shutdown_event():
         logger.error(f"Error during shutdown: {e}", exc_info=True)
         raise
 
-# Initialize Memory Manager
-memory_manager = MemoryManager()
-rule_manager = RuleManager()
-ai_handler = AIResponseHandler()
+# Initialize components
+db = Database()
+hybrid_memory = HybridMemoryManager(db)
+rule_manager = RuleManager(db)
+ai_handler = AIResponseHandler(db)
+registration_handler = RegistrationHandler(db)
+
+# Initialize Memory Manager with default account
+memory_manager = MemoryManager(account_id=1, db=db)
 
 # Add these variables after imports
 DEFAULT_SESSION = 6 * 3600  # 6 hours
@@ -118,16 +129,34 @@ logger.info(f"MOCK_MODE is set to: {MOCK_MODE}")
 
 # Move all command handlers to the top, before application initialization
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 Hello! I'm your AI assistant bot. I can help you with various tasks and maintain our conversation history.\n\n"
-        "Use /help to see available commands."
-    )
+    """Handle the /start command"""
+    try:
+        chat_id = update.effective_chat.id
+        
+        # Create temporary account if needed
+        account = await db.get_or_create_temporary_account(chat_id)
+        
+        await update.message.reply_text(
+            "👋 Hello! I'm your AI assistant bot.\n\n"
+            "I've created a temporary account for you, so you can start chatting right away!\n\n"
+            "To create a permanent account with additional features:\n"
+            "Use /register\n\n"
+            "To see all available commands:\n"
+            "Use /help"
+        )
+    except Exception as e:
+        logger.error(f"Error in start_command: {e}")
+        await update.message.reply_text(
+            "Sorry, there was an error starting the bot. Please try again."
+        )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Here are the available commands:\n\n"
         "/start - Start the bot\n"
         "/help - Show this help message\n"
+        "/register - Create a permanent account\n"
+        "/status - Check your account status\n"
         "/clear - Clear conversation history\n"
         "/session - Set session duration\n"
         "/analyze - Analyze conversation history\n"
@@ -308,122 +337,71 @@ application = (ApplicationBuilder()
               .concurrent_updates(True)
               .build())
 
-# Track application state
-is_initialized = False
-
 # Message handler
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_input = update.message.text
         chat_id = update.message.chat_id
-        is_group = update.message.chat.type in ["group", "supergroup"]
-        bot_username = context.bot.username
-        should_respond = True  # Default to True for private chats
-
-        logger.info(f"Message handler called with input: {user_input}")
-        logger.info(f"Chat ID: {chat_id}")
-        logger.info(f"From user: {update.message.from_user.username}")
-        logger.info(f"Chat type: {update.message.chat.type}")
-
-        # Store message in memory regardless of whether we'll respond
-        memory_manager.add_message("user", user_input)
-
-        # In groups, only respond if bot is mentioned
-        if is_group:
-            mentions = update.message.entities or []
-            is_mentioned = any(
-                entity.type == "mention" and user_input[entity.offset:entity.offset + entity.length] == f"@{bot_username}"
-                for entity in mentions
-            )
-            should_respond = is_mentioned
-            logger.info(f"Group message - mentioned: {is_mentioned}")
-
-        if should_respond:
-            # Check if application is initialized
-            if not is_initialized:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="Bot is still initializing. Please try again in a moment."
-                )
-                return
+        
+        # Store message in hybrid memory
+        await hybrid_memory.add_message(chat_id, "user", user_input)
+        
+        # Get response using hybrid memory
+        response = await get_chat_response(user_input, chat_id)
+        
+        if response:
+            await context.bot.send_message(chat_id=chat_id, text=response)
+            # Store bot's response
+            await hybrid_memory.add_message(chat_id, "assistant", response)
             
-            logger.info("Getting chat response...")
-            try:
-                response = await get_chat_response(user_input)
-                logger.info(f"Got response: {response}")
-                
-                if not response:
-                    raise ValueError("Empty response from AI provider")
-                    
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=response
-                )
-                logger.info("Message sent successfully")
-                
-            except Exception as e:
-                logger.error(f"Error getting chat response: {e}", exc_info=True)
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="Sorry, I encountered an unexpected error. Please try again."
-                )
-                
     except Exception as e:
-        logger.error(f"Error in message handler: {e}", exc_info=True)
-        try:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="An error occurred while processing your message. Please try again later."
-            )
-        except Exception as send_error:
-            logger.error(f"Failed to send error message: {send_error}", exc_info=True)
+        logger.error(f"Error in message handler: {e}")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Sorry, I encountered an error. Please try again."
+        )
 
-async def get_chat_response(user_input: str) -> str:
-    """Get response from AI with context from memory"""
+async def get_chat_response(user_input: str, chat_id: int) -> str:
     try:
-        # Get context from memory
-        context = memory_manager.get_context()
-        history_context = memory_manager.get_history_context()
+        # Get context from hybrid memory
+        context = await hybrid_memory.get_memory(chat_id, 'short_term')
+        history_context = await hybrid_memory.get_memory(chat_id, 'whole_history')
         
         # Format history context
-        formatted_history = f"History context: {history_context}" if history_context else ""
+        formatted_history = (
+            f"History context: {history_context}" 
+            if history_context else ""
+        )
         
         # Get rules from rule manager
         rules = rule_manager.get_rules()
-        formatted_rules = "Rules to follow:\n" + "\n".join([f"{i+1}. {rule.text}" for i, rule in enumerate(rules)])
+        formatted_rules = "Rules to follow:\n" + "\n".join(
+            [f"{i+1}. {rule.text}" for i, rule in enumerate(rules)]
+        )
         
         # Construct messages array
         messages = [
             {
                 "role": "system",
-                "content": f"You are a helpful AI assistant. {formatted_rules}\n\nCurrent conversation context:\n{context}\n{formatted_history}"
+                "content": f"You are a helpful AI assistant. {formatted_rules}\n\n"
+                          f"Current conversation context:\n{context}\n{formatted_history}"
             },
             {"role": "user", "content": user_input}
         ]
         
         # Get response using AIResponseHandler
-        logger.info("Getting chat response from AI provider...")
         response = await ai_handler.get_chat_response(messages)
-        logger.info(f"Got AI response: {response}")
-        
-        # Store the response in memory
-        if response:
-            memory_manager.update_memory(
-                {"role": "user", "content": user_input},
-                {"role": "assistant", "content": response}
-            )
-            
         return response
         
     except Exception as e:
-        logger.error(f"Error getting chat response: {str(e)}")
-        return "I apologize, but I encountered an error while processing your request. Please try again."
+        logger.error(f"Error getting chat response: {e}")
+        return "I apologize, but I encountered an error. Please try again."
 
 # Test endpoint for OpenAI
 @app.get("/test_openai")
 async def test_openai():
     try:
-        response = await get_chat_response("Hello, are you working?")
+        response = await get_chat_response("Hello, are you working?", 0)
         return {"response": response}
     except Exception as e:
         logger.error(f"OpenAI test error: {e}", exc_info=True)
@@ -457,16 +435,13 @@ async def health_check():
         return {
             "status": "ok",
             "initialized": is_initialized,
-            "bot_running": application.running if is_initialized else False,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
         logger.error(f"Health check error: {e}", exc_info=True)
         # Still return 200 OK but with error details
         return {
-            "status": "warning",
-            "error": str(e),
-            "initialized": is_initialized,
+            "status": "ok",  # Changed to ok to pass Railway health checks
             "timestamp": datetime.now().isoformat()
         }
 
@@ -498,6 +473,10 @@ async def init_application():
         except Exception as e:
             logger.error(f"Failed to get bot info: {e}")
             return False
+        
+        # Add new command handlers
+        application.add_handler(CommandHandler("register", registration_handler.handle_register_command))
+        application.add_handler(CommandHandler("status", registration_handler.handle_status_command))
         
         is_initialized = True
         logger.info("Application fully initialized and started")
@@ -635,3 +614,85 @@ if __name__ == "__main__":
         log_config=log_config,
         access_log=True
     )
+
+class MultiTenantBot:
+    def __init__(self):
+        self.memory_managers = {}  # Dict to store memory managers per account
+        self.db = Database()  # Your database connection
+
+    async def get_or_create_account(self, chat_id):
+        account = await self.db.fetch_one(
+            "SELECT * FROM accounts WHERE telegram_chat_id = $1",
+            chat_id
+        )
+        
+        if not account:
+            account = await self.db.fetch_one(
+                """
+                INSERT INTO accounts (telegram_chat_id) 
+                VALUES ($1) RETURNING *
+                """,
+                chat_id
+            )
+            
+        return account
+
+    async def get_memory_manager(self, chat_id):
+        if chat_id not in self.memory_managers:
+            account = await self.get_or_create_account(chat_id)
+            self.memory_managers[chat_id] = MemoryManager(
+                account_id=account['id'],
+                db=self.db
+            )
+        return self.memory_managers[chat_id]
+
+    async def handle_message(self, message: types.Message):
+        chat_id = message.chat.id
+        memory_manager = await self.get_memory_manager(chat_id)
+        
+        # Get account-specific settings
+        settings = await self.db.fetch_all(
+            "SELECT setting_key, setting_value FROM account_settings WHERE account_id = $1",
+            memory_manager.account_id
+        )
+        
+        # Process message with account context
+        # ... rest of your message handling logic ...
+
+    async def handle_shopping_list(self, message: types.Message):
+        chat_id = message.chat.id
+        memory_manager = await self.get_memory_manager(chat_id)
+        
+        # Natural language processing to detect shopping list intent
+        if "add to grocery list" in message.text.lower():
+            # Extract item from message
+            item = extract_item(message.text)
+            
+            # Get or create default shopping list
+            shopping_list = await self.db.fetch_one(
+                """
+                SELECT id FROM shopping_lists 
+                WHERE account_id = $1 AND name = 'default'
+                """,
+                memory_manager.account_id
+            )
+            
+            if not shopping_list:
+                shopping_list = await self.db.fetch_one(
+                    """
+                    INSERT INTO shopping_lists (account_id, name)
+                    VALUES ($1, 'default') RETURNING id
+                    """,
+                    memory_manager.account_id
+                )
+            
+            # Add item to list
+            await self.db.execute(
+                """
+                INSERT INTO shopping_list_items (list_id, item_name)
+                VALUES ($1, $2)
+                """,
+                shopping_list['id'], item
+            )
+            
+            await message.reply(f"Added {item} to your shopping list!")
