@@ -31,20 +31,27 @@ def init_supabase():
             supabase_version = importlib.metadata.version('supabase')
             logger.info(f"Detected supabase version: {supabase_version}")
         except importlib.metadata.PackageNotFoundError:
-            logger.error("Supabase package is not installed. Please install it with: pip install supabase>=2.3.0")
+            logger.error("Supabase package is not installed. Please install it with: pip install supabase==2.8.1")
             return None
         
         # Initialize Supabase client using the modern approach
         try:
             from supabase import create_client
-            client = create_client(SUPABASE_URL, SUPABASE_KEY)
+            
+            # Create client with only the required parameters to avoid compatibility issues
+            # The 'proxy' parameter was causing issues in version 2.8.1
+            client = create_client(
+                supabase_url=SUPABASE_URL,
+                supabase_key=SUPABASE_KEY
+            )
+            
             logger.info("Supabase client initialized successfully with create_client")
             
             # Test connection
             try:
                 # Modern API uses .from_() instead of .table()
                 test_result = client.from_('accounts').select('count', count='exact').limit(1).execute()
-                logger.info("Supabase connection test successful")
+                logger.info(f"Supabase connection test successful: {test_result.count if hasattr(test_result, 'count') else 'unknown'} accounts found")
             except Exception as test_error:
                 logger.warning(f"Supabase connection test failed: {test_error}")
                 # Continue anyway as the table might not exist yet
@@ -52,6 +59,23 @@ def init_supabase():
             return client
         except Exception as e:
             logger.error(f"Error initializing Supabase client: {e}")
+            
+            # Try alternative initialization method if the first one fails
+            try:
+                logger.info("Trying alternative initialization method...")
+                import supabase
+                
+                # Check if we're using a version that requires different initialization
+                if supabase_version.startswith('2.8'):
+                    logger.info("Using initialization method for version 2.8+")
+                    client = supabase.Client(SUPABASE_URL, SUPABASE_KEY)
+                    logger.info("Supabase client initialized successfully with alternative method")
+                    return client
+                else:
+                    logger.error(f"Unsupported Supabase version: {supabase_version}")
+            except Exception as alt_error:
+                logger.error(f"Alternative initialization also failed: {alt_error}")
+            
             return None
     except Exception as e:
         logger.error(f"Error initializing Supabase: {e}")
