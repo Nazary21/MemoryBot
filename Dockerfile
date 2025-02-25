@@ -18,6 +18,8 @@ RUN chmod +x entrypoint.sh
 COPY . .
 
 # Set a default PORT environment variable
+# This will be overridden by Railway if PORT is set in their variables
+# Railway will inject its own PORT value at runtime
 ENV PORT=8000
 
 # Use ENTRYPOINT for the script and CMD for default arguments

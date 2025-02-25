@@ -87,11 +87,70 @@ CMD uvicorn bot:app --host 0.0.0.0 --port $PORT
 
 ## Current Solution
 
-[To be completed after finding a working solution]
+Our current solution involves multiple components working together:
+
+### 1. Explicitly Setting PORT in Railway Variables
+
+We added the PORT variable directly to Railway's environment variables:
+- Key: `PORT`
+- Value: `8000`
+
+This ensures that Railway explicitly sets this variable rather than relying on automatic injection.
+
+### 2. Enhanced Entrypoint Script
+
+We created a robust entrypoint script (`entrypoint.sh`) that:
+- Prints all environment variables for debugging
+- Checks if the PORT variable is set and provides a default if not
+- Validates that PORT is a numeric value
+- Displays Railway-specific information
+- Uses `exec` to properly start the application
+
+```bash
+#!/bin/bash
+# Check for PORT variable
+if [ -z "$PORT" ]; then
+  echo "WARNING: PORT environment variable not set, using default port 8000"
+  export PORT=8000
+fi
+
+# Verify PORT is a number
+if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: PORT value '$PORT' is not a valid number"
+  echo "Setting default PORT=8000"
+  export PORT=8000
+fi
+
+# Start the application with the resolved port
+exec uvicorn bot:app --host 0.0.0.0 --port "$PORT"
+```
+
+### 3. Updated Dockerfile Configuration
+
+We modified our Dockerfile to:
+- Set a default PORT value that can be overridden
+- Use ENTRYPOINT to run our script
+- Include clear comments about Railway's environment
+
+```dockerfile
+# Set a default PORT environment variable
+# This will be overridden by Railway if PORT is set in their variables
+ENV PORT=8000
+
+# Use ENTRYPOINT for the script
+ENTRYPOINT ["./entrypoint.sh"]
+```
+
+**Result**: This approach provides multiple layers of protection against PORT variable issues:
+1. Explicit setting in Railway
+2. Default value in Dockerfile
+3. Validation and fallback in entrypoint script
 
 ## Lessons Learned
 
 1. Docker environment variable handling can be tricky, especially when using different forms of the CMD instruction
 2. The way environment variables are passed from a platform (like Railway) to a container may not always work as expected
 3. It's important to include detailed logging and debugging information when troubleshooting environment variable issues
-4. Testing locally with similar environment configurations can help identify issues before deployment 
+4. Testing locally with similar environment configurations can help identify issues before deployment
+5. Explicitly setting environment variables in both the platform and the container provides more reliable behavior
+6. Using an entrypoint script with validation logic adds an extra layer of protection against variable issues 
