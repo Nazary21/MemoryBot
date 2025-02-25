@@ -10,15 +10,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements_filtered.txt && \
     pip install --no-cache-dir supabase==2.12.0 --no-deps
 
-# Copy the Python startup script first
-COPY start.py .
-
-# Copy the rest of the application
+# Copy the application
 COPY . .
 
-# Set a default PORT environment variable
-# Note: This is just a fallback, Railway should provide the actual PORT value
-ENV PORT=8000
-
-# Use Python script to start the application
-CMD ["python", "start.py"]
+# Directly use hardcoded port 8000 - no environment variable
+CMD ["uvicorn", "bot:app", "--host", "0.0.0.0", "--port", "8000"]
