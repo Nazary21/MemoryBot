@@ -154,6 +154,21 @@ def get_recent_messages(limit: int = 5) -> List[Dict]:
         logger.error(f"Error getting recent messages: {e}")
         return []
 
+async def check_database_status() -> Dict[str, bool | str]:
+    """Check database connection status"""
+    try:
+        if not db.initialized:
+            return {"status": False, "message": "Supabase client not initialized"}
+            
+        # Try a simple query to test connection
+        try:
+            result = await db.supabase.table('accounts').select('count(*)', count='exact').limit(1).execute()
+            return {"status": True, "message": f"Connected, found {result.count} accounts"}
+        except Exception as e:
+            return {"status": False, "message": f"Connection error: {str(e)}"}
+    except Exception as e:
+        return {"status": False, "message": f"Error: {str(e)}"}
+
 @router.get("/", response_class=HTMLResponse)
 @router.get("", response_class=HTMLResponse)
 async def dashboard(request: Request, auth_info: dict = Depends(verify_credentials)):
@@ -162,6 +177,7 @@ async def dashboard(request: Request, auth_info: dict = Depends(verify_credentia
         # Get statuses
         telegram_status = await check_telegram_status()
         openai_status = await check_openai_status()
+        database_status = await check_database_status()
         memory_stats = get_memory_stats()
         
         # Get rules organized by category
@@ -193,6 +209,8 @@ async def dashboard(request: Request, auth_info: dict = Depends(verify_credentia
                 "telegram_status_message": telegram_status["message"],
                 "openai_status": openai_status["status"],
                 "openai_status_message": openai_status["message"],
+                "database_status": database_status["status"],
+                "database_status_message": database_status["message"],
                 "message_count": memory_stats["message_count"],
                 "context_count": memory_stats["context_count"],
                 "recent_messages": get_recent_messages(),
@@ -245,8 +263,25 @@ async def add_rule(
     username: str = Depends(verify_credentials)
 ):
     """Add a new GPT rule"""
-    rule_manager.add_rule(rule_text, category, priority)
-    return RedirectResponse(url="/dashboard", status_code=303)
+    try:
+        logger.info(f"Adding new rule: '{rule_text}' in category '{category}' with priority {priority}")
+        
+        # Use default account_id=1
+        account_id = 1
+        
+        # Add rule using the async method
+        rule = await rule_manager.add_rule(account_id, rule_text, category, priority)
+        
+        if rule:
+            logger.info(f"Rule added successfully: {rule.text}")
+        else:
+            logger.error("Failed to add rule")
+            
+        return RedirectResponse(url="/dashboard", status_code=303)
+    except Exception as e:
+        logger.error(f"Error adding rule: {e}")
+        # Still redirect to dashboard to avoid breaking the UI flow
+        return RedirectResponse(url="/dashboard?error=add_rule_failed", status_code=303)
 
 @router.post("/remove_rule")
 async def remove_rule(
@@ -254,8 +289,33 @@ async def remove_rule(
     username: str = Depends(verify_credentials)
 ):
     """Remove a GPT rule"""
-    rule_manager.remove_rule(rule_index)
-    return RedirectResponse(url="/dashboard", status_code=303)
+    try:
+        logger.info(f"Removing rule at index {rule_index}")
+        
+        # Get all rules first
+        rules = await rule_manager.get_rules(account_id=1)
+        
+        if rule_index < 0 or rule_index >= len(rules):
+            logger.error(f"Invalid rule index: {rule_index}, total rules: {len(rules)}")
+            return RedirectResponse(url="/dashboard?error=invalid_rule_index", status_code=303)
+        
+        # Get the rule ID
+        rule = rules[rule_index]
+        logger.info(f"Removing rule: {rule.text}")
+        
+        # Delete the rule
+        success = await rule_manager.delete_rule(rule_index, account_id=1)
+        
+        if success:
+            logger.info(f"Rule removed successfully")
+        else:
+            logger.error("Failed to remove rule")
+            
+        return RedirectResponse(url="/dashboard", status_code=303)
+    except Exception as e:
+        logger.error(f"Error removing rule: {e}")
+        # Still redirect to dashboard to avoid breaking the UI flow
+        return RedirectResponse(url="/dashboard?error=remove_rule_failed", status_code=303)
 
 @router.get("/overview", response_class=HTMLResponse)
 async def dashboard_overview(

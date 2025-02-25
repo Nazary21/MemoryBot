@@ -273,23 +273,97 @@ class RuleManager:
             formatted += "\n"
         return formatted
 
-    async def add_rule(self, account_id: int, rule_text: str, priority: int = 0) -> Optional[Rule]:
+    async def add_rule(self, account_id: int, rule_text: str, category: str = "General", priority: int = 0) -> Optional[Rule]:
         """Add a new rule for an account"""
         try:
-            result = await self.db.supabase.table('bot_rules').insert({
-                'account_id': account_id,
-                'rule_text': rule_text,
-                'priority': priority
-            }).execute()
+            if self.db.supabase is None:
+                logger.error("Cannot add rule: Supabase client is not initialized")
+                # Use file-based fallback
+                return self._add_rule_fallback(account_id, rule_text, category, priority)
+                
+            # Try to insert the rule
+            try:
+                result = await self.db.supabase.table('bot_rules').insert({
+                    'account_id': account_id,
+                    'rule_text': rule_text,
+                    'priority': priority,
+                    'is_active': True
+                }).execute()
+                
+                if result.data:
+                    rule_data = result.data[0]
+                    logger.info(f"Rule added successfully: {rule_text}")
+                    return Rule(
+                        text=rule_data['rule_text'],
+                        priority=rule_data['priority'],
+                        is_active=rule_data['is_active']
+                    )
+                else:
+                    logger.warning("No data returned from rule insertion")
+            except Exception as insert_error:
+                logger.error(f"Error inserting rule: {insert_error}")
+                
+                # Try alternative approach with RPC
+                try:
+                    logger.info("Trying alternative rule insertion with RPC...")
+                    await self.db.supabase.rpc('execute_sql', {
+                        'query': f"""
+                        INSERT INTO bot_rules (account_id, rule_text, priority, is_active)
+                        VALUES ({account_id}, '{rule_text.replace("'", "''")}', {priority}, TRUE)
+                        """
+                    }).execute()
+                    logger.info(f"Rule added via SQL: {rule_text}")
+                    return Rule(text=rule_text, priority=priority, is_active=True)
+                except Exception as sql_error:
+                    logger.error(f"Error adding rule via SQL: {sql_error}")
             
-            rule_data = result.data[0]
-            return Rule(
-                text=rule_data['rule_text'],
-                priority=rule_data['priority'],
-                is_active=rule_data['is_active']
-            )
+            # If we get here, both attempts failed
+            return self._add_rule_fallback(account_id, rule_text, category, priority)
         except Exception as e:
             logger.error(f"Error adding rule: {e}")
+            return self._add_rule_fallback(account_id, rule_text, category, priority)
+    
+    def _add_rule_fallback(self, account_id: int, rule_text: str, category: str, priority: int) -> Optional[Rule]:
+        """Fallback method to add a rule using file storage"""
+        try:
+            logger.info(f"Using file-based fallback to add rule: {rule_text}")
+            
+            # Create memory directory if it doesn't exist
+            memory_dir = "memory"
+            os.makedirs(memory_dir, exist_ok=True)
+            
+            # Create rules file if it doesn't exist
+            rules_file = os.path.join(memory_dir, "bot_rules.json")
+            
+            # Load existing rules
+            rules = []
+            if os.path.exists(rules_file):
+                with open(rules_file, 'r') as f:
+                    try:
+                        rules = json.load(f)
+                    except json.JSONDecodeError:
+                        rules = []
+            
+            # Add new rule
+            new_rule = {
+                'account_id': account_id,
+                'rule_text': rule_text,
+                'category': category,
+                'priority': priority,
+                'is_active': True,
+                'created_at': datetime.now().isoformat()
+            }
+            
+            rules.append(new_rule)
+            
+            # Save updated rules
+            with open(rules_file, 'w') as f:
+                json.dump(rules, f)
+            
+            logger.info(f"Rule added to file storage: {rule_text}")
+            return Rule(text=rule_text, priority=priority, is_active=True)
+        except Exception as e:
+            logger.error(f"Error in fallback rule addition: {e}")
             return None
 
     async def update_rule(self, rule_id: int, account_id: int, updates: Dict) -> bool:
@@ -303,13 +377,105 @@ class RuleManager:
             logger.error(f"Error updating rule: {e}")
             return False
 
-    async def delete_rule(self, rule_id: int, account_id: int) -> bool:
-        """Delete a rule"""
+    async def delete_rule(self, rule_index: int, account_id: int) -> bool:
+        """Delete a rule by index"""
         try:
-            await self.db.supabase.table('bot_rules').delete().eq(
-                'id', rule_id
-            ).eq('account_id', account_id).execute()
-            return True
+            if self.db.supabase is None:
+                logger.error("Cannot delete rule: Supabase client is not initialized")
+                # Use file-based fallback
+                return self._delete_rule_fallback(rule_index, account_id)
+                
+            # Get all rules first
+            rules = await self.get_rules(account_id)
+            
+            if rule_index < 0 or rule_index >= len(rules):
+                logger.error(f"Invalid rule index: {rule_index}, total rules: {len(rules)}")
+                return False
+            
+            # We need to find the actual rule ID in the database
+            # Since we don't have it directly, we'll try to match by text and priority
+            rule = rules[rule_index]
+            
+            try:
+                # Try to find the rule by text and account_id
+                result = await self.db.supabase.table('bot_rules').select('*').eq(
+                    'account_id', account_id
+                ).eq('rule_text', rule.text).execute()
+                
+                if result.data:
+                    rule_id = result.data[0]['id']
+                    logger.info(f"Found rule ID {rule_id} for deletion")
+                    
+                    # Delete the rule
+                    await self.db.supabase.table('bot_rules').delete().eq('id', rule_id).execute()
+                    logger.info(f"Rule {rule_id} deleted successfully")
+                    return True
+                else:
+                    logger.error(f"Could not find rule with text '{rule.text}' for account {account_id}")
+                    # Try fallback
+                    return self._delete_rule_fallback(rule_index, account_id)
+            except Exception as db_error:
+                logger.error(f"Database error deleting rule: {db_error}")
+                # Try fallback
+                return self._delete_rule_fallback(rule_index, account_id)
         except Exception as e:
             logger.error(f"Error deleting rule: {e}")
+            return self._delete_rule_fallback(rule_index, account_id)
+    
+    def _delete_rule_fallback(self, rule_index: int, account_id: int) -> bool:
+        """Fallback method to delete a rule using file storage"""
+        try:
+            logger.info(f"Using file-based fallback to delete rule at index {rule_index}")
+            
+            # Create memory directory if it doesn't exist
+            memory_dir = "memory"
+            os.makedirs(memory_dir, exist_ok=True)
+            
+            # Create rules file if it doesn't exist
+            rules_file = os.path.join(memory_dir, "bot_rules.json")
+            
+            # Check if file exists
+            if not os.path.exists(rules_file):
+                logger.error("Rules file doesn't exist")
+                return False
+            
+            # Load existing rules
+            with open(rules_file, 'r') as f:
+                try:
+                    all_rules = json.load(f)
+                except json.JSONDecodeError:
+                    all_rules = []
+            
+            # Filter rules for this account
+            account_rules = [
+                rule for rule in all_rules 
+                if rule.get('account_id') == account_id and rule.get('is_active', True)
+            ]
+            
+            # Sort by priority
+            account_rules.sort(key=lambda x: x.get('priority', 0), reverse=True)
+            
+            if rule_index < 0 or rule_index >= len(account_rules):
+                logger.error(f"Invalid rule index: {rule_index}, total rules: {len(account_rules)}")
+                return False
+            
+            # Get the rule to delete
+            rule_to_delete = account_rules[rule_index]
+            
+            # Remove the rule from all_rules
+            all_rules = [
+                rule for rule in all_rules 
+                if not (rule.get('account_id') == account_id and 
+                        rule.get('rule_text') == rule_to_delete.get('rule_text') and
+                        rule.get('priority') == rule_to_delete.get('priority'))
+            ]
+            
+            # Save updated rules
+            with open(rules_file, 'w') as f:
+                json.dump(all_rules, f)
+            
+            logger.info(f"Rule deleted from file storage")
+            return True
+        except Exception as e:
+            logger.error(f"Error in fallback rule deletion: {e}")
             return False 

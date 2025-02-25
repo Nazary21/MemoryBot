@@ -44,6 +44,15 @@
                 </div>
             </div>
 
+            <!-- Database Status -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-semibold mb-4">Database Status</h2>
+                <div class="flex items-center">
+                    <div class="w-3 h-3 rounded-full {{ 'bg-green-500' if database_status else 'bg-red-500' }} mr-2"></div>
+                    <span>{{ database_status_message }}</span>
+                </div>
+            </div>
+
             <!-- Memory Status -->
             <div class="bg-white rounded-lg shadow p-6">
                 <h2 class="text-xl font-semibold mb-4">Memory Status</h2>
