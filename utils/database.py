@@ -3,6 +3,8 @@ from typing import Optional, Dict, List
 from config.database import init_supabase
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
+import os
+import json
 
 logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -10,13 +12,41 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class Database:
     def __init__(self):
         self.supabase = init_supabase()
-        if self.supabase is None:
+        self.initialized = self.supabase is not None
+        if not self.initialized:
             logger.error("Failed to initialize Supabase client. Database operations will not work.")
+            logger.info("Setting up file-based fallback mode")
+            self.setup_file_fallback()
+    
+    def setup_file_fallback(self):
+        """Set up file-based fallback storage"""
+        try:
+            # Create memory directory if it doesn't exist
+            self.memory_dir = "memory"
+            os.makedirs(self.memory_dir, exist_ok=True)
+            
+            # Create default files if they don't exist
+            self.fallback_files = {
+                'temporary_accounts': os.path.join(self.memory_dir, "temporary_accounts.json"),
+                'accounts': os.path.join(self.memory_dir, "accounts.json"),
+                'chat_history': os.path.join(self.memory_dir, "chat_history.json"),
+                'bot_rules': os.path.join(self.memory_dir, "bot_rules.json")
+            }
+            
+            # Initialize files with empty arrays if they don't exist
+            for file_path in self.fallback_files.values():
+                if not os.path.exists(file_path):
+                    with open(file_path, 'w') as f:
+                        json.dump([], f)
+                        
+            logger.info("File-based fallback mode set up successfully")
+        except Exception as e:
+            logger.error(f"Error setting up file-based fallback: {e}")
         
     async def setup_tables(self):
         """Initialize database tables"""
         try:
-            if self.supabase is None:
+            if not self.initialized:
                 logger.error("Cannot set up tables: Supabase client is not initialized")
                 return
                 
@@ -29,9 +59,9 @@ class Database:
     async def get_or_create_temporary_account(self, chat_id: int) -> Dict:
         """Get or create a temporary account for a chat"""
         try:
-            if self.supabase is None:
-                logger.error("Cannot get or create temporary account: Supabase client is not initialized")
-                return {}
+            if not self.initialized:
+                logger.warning("Using file-based fallback for temporary account")
+                return self._get_or_create_temporary_account_fallback(chat_id)
                 
             # Check for existing temporary account
             result = await self.supabase.table('temporary_accounts').select('*').eq('telegram_chat_id', chat_id).execute()
@@ -49,13 +79,49 @@ class Database:
             
         except Exception as e:
             logger.error(f"Error in get_or_create_temporary_account: {e}")
-            raise
+            # Use fallback method
+            return self._get_or_create_temporary_account_fallback(chat_id)
+    
+    def _get_or_create_temporary_account_fallback(self, chat_id: int) -> Dict:
+        """Fallback method to get or create a temporary account using file storage"""
+        try:
+            # Load existing accounts
+            with open(self.fallback_files['temporary_accounts'], 'r') as f:
+                accounts = json.load(f)
+            
+            # Look for existing account
+            for account in accounts:
+                if account.get('telegram_chat_id') == chat_id:
+                    return account
+            
+            # Create new account
+            new_account = {
+                'id': len(accounts) + 1,
+                'telegram_chat_id': chat_id,
+                'created_at': datetime.now().isoformat(),
+                'expires_at': (datetime.now() + timedelta(days=30)).isoformat()
+            }
+            
+            accounts.append(new_account)
+            
+            # Save updated accounts
+            with open(self.fallback_files['temporary_accounts'], 'w') as f:
+                json.dump(accounts, f)
+                
+            return new_account
+        except Exception as e:
+            logger.error(f"Error in fallback temporary account creation: {e}")
+            # Return minimal account to prevent further errors
+            return {
+                'id': 1,
+                'telegram_chat_id': chat_id
+            }
 
     async def get_account_by_chat(self, chat_id: int) -> Optional[Dict]:
         """Get permanent account by chat ID"""
         try:
-            if self.supabase is None:
-                logger.error("Cannot get account by chat: Supabase client is not initialized")
+            if not self.initialized:
+                logger.warning("Using file-based fallback for get_account_by_chat")
                 return None
                 
             result = await self.supabase.table('account_chats').select(
@@ -71,8 +137,9 @@ class Database:
     async def store_chat_message(self, account_id: int, chat_id: int, role: str, content: str, memory_type: str = 'short_term'):
         """Store a chat message"""
         try:
-            if self.supabase is None:
-                logger.error("Cannot store chat message: Supabase client is not initialized")
+            if not self.initialized:
+                logger.warning("Using file-based fallback for store_chat_message")
+                self._store_chat_message_fallback(account_id, chat_id, role, content, memory_type)
                 return
                 
             await self.supabase.table('chat_history').insert({
@@ -84,14 +151,42 @@ class Database:
             }).execute()
         except Exception as e:
             logger.error(f"Error storing chat message: {e}")
-            raise
+            # Use fallback method
+            self._store_chat_message_fallback(account_id, chat_id, role, content, memory_type)
+    
+    def _store_chat_message_fallback(self, account_id: int, chat_id: int, role: str, content: str, memory_type: str):
+        """Fallback method to store chat message using file storage"""
+        try:
+            # Load existing messages
+            with open(self.fallback_files['chat_history'], 'r') as f:
+                messages = json.load(f)
+            
+            # Add new message
+            new_message = {
+                'id': len(messages) + 1,
+                'account_id': account_id,
+                'telegram_chat_id': chat_id,
+                'role': role,
+                'content': content,
+                'memory_type': memory_type,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            messages.append(new_message)
+            
+            # Save updated messages
+            with open(self.fallback_files['chat_history'], 'w') as f:
+                json.dump(messages, f)
+                
+        except Exception as e:
+            logger.error(f"Error in fallback message storage: {e}")
 
     async def get_chat_memory(self, chat_id: int, memory_type: str = 'short_term', limit: int = 50) -> List[Dict]:
         """Get chat memory by type"""
         try:
-            if self.supabase is None:
-                logger.error("Cannot get chat memory: Supabase client is not initialized")
-                return []
+            if not self.initialized:
+                logger.warning("Using file-based fallback for get_chat_memory")
+                return self._get_chat_memory_fallback(chat_id, memory_type, limit)
                 
             result = await self.supabase.table('chat_history').select('*').eq(
                 'telegram_chat_id', chat_id
@@ -101,6 +196,31 @@ class Database:
             
         except Exception as e:
             logger.error(f"Error getting chat memory: {e}")
+            return self._get_chat_memory_fallback(chat_id, memory_type, limit)
+    
+    def _get_chat_memory_fallback(self, chat_id: int, memory_type: str, limit: int) -> List[Dict]:
+        """Fallback method to get chat memory using file storage"""
+        try:
+            # Load existing messages
+            with open(self.fallback_files['chat_history'], 'r') as f:
+                all_messages = json.load(f)
+            
+            # Filter messages by chat_id and memory_type
+            filtered_messages = [
+                msg for msg in all_messages 
+                if msg.get('telegram_chat_id') == chat_id and msg.get('memory_type') == memory_type
+            ]
+            
+            # Sort by timestamp (newest first) and limit
+            sorted_messages = sorted(
+                filtered_messages, 
+                key=lambda x: x.get('timestamp', ''), 
+                reverse=True
+            )[:limit]
+            
+            return sorted_messages
+        except Exception as e:
+            logger.error(f"Error in fallback memory retrieval: {e}")
             return []
 
     async def migrate_file_data(self, chat_id: int, account_id: int):

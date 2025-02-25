@@ -44,13 +44,37 @@ class GPTRule:
 class RuleManager:
     def __init__(self, db):
         self.db = db
+        # Default rules that will be created for new accounts
+        self.default_rules = [
+            {"text": "Be helpful, concise, and friendly.", "priority": 10, "category": "General"},
+            {"text": "Respond in the same language as the user's message.", "priority": 9, "category": "Language"},
+            {"text": "If you learn someone's name, use it in future responses.", "priority": 8, "category": "Personalization"},
+            {"text": "Keep track of important information shared in conversation.", "priority": 7, "category": "Memory"},
+            {"text": "Be respectful and maintain a positive tone.", "priority": 6, "category": "Tone"}
+        ]
 
     async def get_rules(self, account_id: int = 1) -> List[Rule]:
         """Get active rules for an account"""
         try:
+            # Check if Supabase client is initialized
+            if self.db.supabase is None:
+                logger.error("Cannot get rules: Supabase client is not initialized")
+                # Return empty list to avoid errors
+                return []
+                
             result = await self.db.supabase.table('bot_rules').select(
                 '*'
             ).eq('account_id', account_id).eq('is_active', True).order('priority', desc=True).execute()
+            
+            # If no rules found, create default rules
+            if not result.data:
+                logger.info(f"No rules found for account {account_id}. Creating default rules.")
+                await self.create_default_rules(account_id)
+                
+                # Try to get rules again
+                result = await self.db.supabase.table('bot_rules').select(
+                    '*'
+                ).eq('account_id', account_id).eq('is_active', True).order('priority', desc=True).execute()
             
             return [Rule(
                 text=rule['rule_text'],
@@ -60,6 +84,35 @@ class RuleManager:
         except Exception as e:
             logger.error(f"Error getting rules: {e}")
             return []
+
+    async def create_default_rules(self, account_id: int) -> bool:
+        """Create default rules for a new account"""
+        try:
+            if self.db.supabase is None:
+                logger.error("Cannot create default rules: Supabase client is not initialized")
+                return False
+                
+            # Check if account exists
+            account_result = await self.db.supabase.table('accounts').select('*').eq('id', account_id).execute()
+            
+            # If account doesn't exist, create it
+            if not account_result.data:
+                logger.info(f"Account {account_id} doesn't exist. Creating it.")
+                await self.db.supabase.table('accounts').insert({'id': account_id, 'name': f'Account {account_id}'}).execute()
+            
+            # Add default rules
+            for rule in self.default_rules:
+                await self.add_rule(
+                    account_id=account_id,
+                    rule_text=rule["text"],
+                    priority=rule["priority"]
+                )
+                
+            logger.info(f"Default rules created for account {account_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error creating default rules: {e}")
+            return False
 
     # For backward compatibility with old code
     def get_rules_sync(self) -> List[GPTRule]:

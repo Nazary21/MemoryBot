@@ -344,23 +344,109 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_input = update.message.text
         chat_id = update.message.chat_id
         
+        logger.info(f"Processing message from chat_id {chat_id}: {user_input[:50]}...")
+        
+        # Check if Supabase is initialized
+        if db.supabase is None:
+            logger.warning("Supabase client is not initialized. Using fallback mode.")
+            # Send a message to the user
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="I'm currently operating in limited mode due to a database connection issue. Basic functionality is available, but some features may not work properly."
+            )
+            
+            # Use file-based memory as fallback
+            try:
+                # Use direct OpenAI call as fallback
+                from openai import OpenAI
+                client = OpenAI(api_key=OPENAI_API_KEY)
+                
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant. Be concise and friendly."},
+                        {"role": "user", "content": user_input}
+                    ]
+                )
+                
+                response_text = response.choices[0].message.content
+                await context.bot.send_message(chat_id=chat_id, text=response_text)
+                
+                # Try to store in file-based memory
+                try:
+                    memory_dir = "memory"
+                    os.makedirs(memory_dir, exist_ok=True)
+                    short_term_file = os.path.join(memory_dir, "short_term.json")
+                    
+                    # Load existing messages
+                    messages = []
+                    if os.path.exists(short_term_file):
+                        with open(short_term_file, 'r') as f:
+                            try:
+                                messages = json.load(f)
+                            except json.JSONDecodeError:
+                                messages = []
+                    
+                    # Add new messages
+                    messages.append({
+                        "role": "user",
+                        "content": user_input,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    messages.append({
+                        "role": "assistant",
+                        "content": response_text,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    
+                    # Save messages
+                    with open(short_term_file, 'w') as f:
+                        json.dump(messages, f)
+                        
+                except Exception as file_error:
+                    logger.error(f"Error storing messages in file: {file_error}")
+                
+                return
+            except Exception as fallback_error:
+                logger.error(f"Error in fallback mode: {fallback_error}")
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="I'm experiencing technical difficulties. Please try again later."
+                )
+                return
+        
         # Store message in hybrid memory
-        await hybrid_memory.add_message(chat_id, "user", user_input)
+        try:
+            await hybrid_memory.add_message(chat_id, "user", user_input)
+        except Exception as memory_error:
+            logger.error(f"Error storing message in memory: {memory_error}")
+            # Continue anyway to try to get a response
         
         # Get response using hybrid memory
-        response = await get_chat_response(user_input, chat_id)
+        try:
+            response = await get_chat_response(user_input, chat_id)
+        except Exception as response_error:
+            logger.error(f"Error getting chat response: {response_error}")
+            response = "I apologize, but I encountered an error processing your request. Please try again."
         
         if response:
             await context.bot.send_message(chat_id=chat_id, text=response)
             # Store bot's response
-            await hybrid_memory.add_message(chat_id, "assistant", response)
+            try:
+                await hybrid_memory.add_message(chat_id, "assistant", response)
+            except Exception as store_error:
+                logger.error(f"Error storing bot response: {store_error}")
+                # Continue anyway as the response was already sent
             
     except Exception as e:
-        logger.error(f"Error in message handler: {e}")
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="Sorry, I encountered an error. Please try again."
-        )
+        logger.error(f"Error in message handler: {e}", exc_info=True)
+        try:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="Sorry, I encountered an error. Please try again."
+            )
+        except Exception as send_error:
+            logger.error(f"Error sending error message: {send_error}")
 
 async def get_chat_response(user_input: str, chat_id: int) -> str:
     try:
