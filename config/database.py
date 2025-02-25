@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 import logging
 import importlib.metadata
+import sys
 
 # Configure logging specifically for this module
 logger = logging.getLogger(__name__)
@@ -26,15 +27,20 @@ def init_supabase():
             
         logger.info(f"Initializing Supabase client with URL: {SUPABASE_URL[:10]}...")
         
+        # Check Python version compatibility
+        python_version = sys.version_info
+        if python_version.major > 3 or (python_version.major == 3 and python_version.minor > 11):
+            logger.warning(f"Python {python_version.major}.{python_version.minor} detected. Supabase is only officially supported up to Python 3.11")
+        
         # Check if supabase package is installed
         try:
             supabase_version = importlib.metadata.version('supabase')
             logger.info(f"Detected supabase version: {supabase_version}")
         except importlib.metadata.PackageNotFoundError:
-            logger.error("Supabase package is not installed. Please install it with: pip install supabase==1.0.3")
+            logger.error("Supabase package is not installed. Please install it with: pip install supabase==2.13.0")
             return None
         
-        # Initialize Supabase client using the approach compatible with version 1.0.3
+        # Initialize Supabase client
         try:
             from supabase import create_client
             
@@ -59,6 +65,18 @@ def init_supabase():
             return client
         except Exception as e:
             logger.error(f"Error initializing Supabase client: {e}")
+            
+            # Try alternative initialization if the first method fails
+            try:
+                logger.info("Trying alternative initialization method...")
+                # This is a fallback for different versions of the Supabase client
+                import supabase
+                client = supabase.Client(SUPABASE_URL, SUPABASE_KEY)
+                logger.info("Supabase client initialized successfully with alternative method")
+                return client
+            except Exception as alt_error:
+                logger.error(f"Alternative initialization also failed: {alt_error}")
+            
             return None
     except Exception as e:
         logger.error(f"Error initializing Supabase: {e}")

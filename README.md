@@ -97,6 +97,24 @@ To run the bot locally:
 uvicorn bot:app --reload
 ```
 
+## Development Requirements
+
+### Python Version
+This project requires Python 3.7-3.11. Python 3.11.x is recommended for optimal compatibility.
+Python 3.12 or newer is not officially supported by the Supabase Python client.
+
+### Dependencies
+Install dependencies using:
+```bash
+pip install -r requirements.txt
+```
+
+Key dependencies:
+- Supabase 2.13.0 (Python client for Supabase)
+- FastAPI 0.109.2 (Web framework)
+- Python-Telegram-Bot 20.7 (Telegram bot API)
+- OpenAI 1.12.0 (OpenAI API client)
+
 ## Security Notes
 
 - Never commit your `.env` file or any files containing API keys
