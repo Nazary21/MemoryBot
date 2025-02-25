@@ -314,8 +314,9 @@ async def history_context_command(update: Update, context: ContextTypes.DEFAULT_
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display current bot rules"""
     try:
-        rule_manager = RuleManager()
-        rules_text = rule_manager.get_formatted_rules()
+        # Get rules for default account (id=1)
+        rules = await rule_manager.get_rules(account_id=1)
+        rules_text = rule_manager.get_formatted_rules(rules)
         await update.message.reply_text(rules_text)
     except Exception as e:
         logger.error(f"Error in rules_command: {e}", exc_info=True)
@@ -374,10 +375,14 @@ async def get_chat_response(user_input: str, chat_id: int) -> str:
         )
         
         # Get rules from rule manager
-        rules = rule_manager.get_rules()
-        formatted_rules = "Rules to follow:\n" + "\n".join(
-            [f"{i+1}. {rule.text}" for i, rule in enumerate(rules)]
-        )
+        try:
+            rules = await rule_manager.get_rules(account_id=1)
+            formatted_rules = "Rules to follow:\n" + "\n".join(
+                [f"{i+1}. {rule.text}" for i, rule in enumerate(rules)]
+            )
+        except Exception as e:
+            logger.error(f"Error getting rules: {e}")
+            formatted_rules = "Rules to follow:\nBe helpful and respectful."
         
         # Construct messages array
         messages = [
@@ -390,7 +395,7 @@ async def get_chat_response(user_input: str, chat_id: int) -> str:
         ]
         
         # Get response using AIResponseHandler
-        response = await ai_handler.get_chat_response(messages)
+        response = await ai_handler.get_chat_response(1, messages)
         return response
         
     except Exception as e:

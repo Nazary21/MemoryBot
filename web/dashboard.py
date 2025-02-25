@@ -140,7 +140,8 @@ def get_memory_stats() -> Dict[str, int]:
             "message_count": len(short_term),
             "context_count": len(context)
         }
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error getting memory stats: {e}")
         return {"message_count": 0, "context_count": 0}
 
 def get_recent_messages(limit: int = 5) -> List[Dict]:
@@ -149,52 +150,67 @@ def get_recent_messages(limit: int = 5) -> List[Dict]:
         with open('memory/short_term.json', 'r') as f:
             messages = json.load(f)
         return messages[-limit:]
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error getting recent messages: {e}")
         return []
 
 @router.get("/", response_class=HTMLResponse)
 @router.get("", response_class=HTMLResponse)
 async def dashboard(request: Request, auth_info: dict = Depends(verify_credentials)):
     """Dashboard main view with authentication"""
-    # Get statuses
-    telegram_status = await check_telegram_status()
-    openai_status = await check_openai_status()
-    memory_stats = get_memory_stats()
-    
-    # Get rules organized by category
-    rules = rule_manager.get_rules()
-    rules_by_category = {}
-    
-    # Organize rules by category
-    for rule in rules:
-        category = rule.category
-        if category not in rules_by_category:
-            rules_by_category[category] = []
-        rules_by_category[category].append(rule)
+    try:
+        # Get statuses
+        telegram_status = await check_telegram_status()
+        openai_status = await check_openai_status()
+        memory_stats = get_memory_stats()
+        
+        # Get rules organized by category
+        try:
+            # Use default account_id=1
+            rules = await rule_manager.get_rules(account_id=1)
+        except Exception as e:
+            logger.error(f"Error getting rules: {e}")
+            rules = []
+            
+        rules_by_category = {}
+        
+        # Organize rules by category
+        for rule in rules:
+            # Default category if not available
+            category = getattr(rule, 'category', 'General')
+            if category not in rules_by_category:
+                rules_by_category[category] = []
+            rules_by_category[category].append(rule)
 
-    # Get current AI provider info
-    provider_info = ai_manager.get_provider()
+        # Get current AI provider info
+        provider_info = ai_manager.get_provider()
 
-    return templates.TemplateResponse(
-        "dashboard.html",
-        {
-            "request": request,
-            "telegram_status": telegram_status["status"],
-            "telegram_status_message": telegram_status["message"],
-            "openai_status": openai_status["status"],
-            "openai_status_message": openai_status["message"],
-            "message_count": memory_stats["message_count"],
-            "context_count": memory_stats["context_count"],
-            "recent_messages": get_recent_messages(),
-            "rules_by_category": rules_by_category,
-            "rule_indices": {rule.text: i for i, rule in enumerate(rules)},
-            "dashboard_prefix": "/dashboard",
-            "active_provider": ai_manager.get_active_provider(),
-            "provider_info": provider_info,
-            "username": auth_info["username"],
-            "using_default_auth": auth_info["using_defaults"]
-        }
-    )
+        return templates.TemplateResponse(
+            "dashboard.html",
+            {
+                "request": request,
+                "telegram_status": telegram_status["status"],
+                "telegram_status_message": telegram_status["message"],
+                "openai_status": openai_status["status"],
+                "openai_status_message": openai_status["message"],
+                "message_count": memory_stats["message_count"],
+                "context_count": memory_stats["context_count"],
+                "recent_messages": get_recent_messages(),
+                "rules_by_category": rules_by_category,
+                "rule_indices": {rule.text: i for i, rule in enumerate(rules)},
+                "dashboard_prefix": "/dashboard",
+                "active_provider": ai_manager.get_active_provider(),
+                "provider_info": provider_info,
+                "username": auth_info["username"],
+                "using_default_auth": auth_info["using_defaults"]
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error rendering dashboard: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 @router.post("/set_provider")
 async def set_provider(provider: str = Form(...), username: str = Depends(verify_credentials)):

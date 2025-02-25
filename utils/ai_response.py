@@ -61,24 +61,55 @@ class AIResponseHandler:
     async def get_chat_response(self, account_id: int, messages: List[Dict]) -> Optional[str]:
         """Get chat response using account-specific settings"""
         try:
-            settings = await self.get_account_model_settings(account_id)
+            # For backward compatibility, handle both int and list as first parameter
+            if isinstance(account_id, list) and isinstance(messages, (float, int)):
+                # Old method signature: get_chat_response(messages, temperature)
+                temperature = messages
+                messages = account_id
+                account_id = 1  # Default account
+                settings = {
+                    "model": self.default_model,
+                    "temperature": temperature,
+                    "max_tokens": self.default_settings["max_tokens"]
+                }
+            else:
+                # New method signature: get_chat_response(account_id, messages)
+                try:
+                    settings = await self.get_account_model_settings(account_id)
+                except Exception as e:
+                    logger.error(f"Error getting account settings: {e}")
+                    settings = {
+                        "model": self.default_model,
+                        "temperature": self.default_settings["temperature"],
+                        "max_tokens": self.default_settings["max_tokens"]
+                    }
             
-            response = await self.client.chat.completions.create(
-                model=settings['model'],
-                messages=messages,
-                temperature=settings['temperature'],
-                max_tokens=settings['max_tokens']
-            )
-            
-            # Track token usage
-            total_tokens = response.usage.total_tokens if hasattr(response, 'usage') else 0
-            await self.db.track_usage(account_id, total_tokens)
-            
-            return response.choices[0].message.content
-            
+            # Use OpenAI client
+            try:
+                response = await self.client.chat.completions.create(
+                    model=settings['model'],
+                    messages=messages,
+                    temperature=settings['temperature'],
+                    max_tokens=settings['max_tokens']
+                )
+                
+                # Track token usage if possible
+                try:
+                    total_tokens = response.usage.total_tokens if hasattr(response, 'usage') else 0
+                    await self.db.track_usage(account_id, total_tokens)
+                except Exception as usage_error:
+                    logger.error(f"Error tracking usage: {usage_error}")
+                
+                return response.choices[0].message.content
+            except Exception as openai_error:
+                logger.error(f"OpenAI API error: {openai_error}")
+                
+                # Fall back to provider manager if OpenAI client fails
+                return await self.get_chat_response_old(messages, settings['temperature'])
+                
         except Exception as e:
             logger.error(f"Error getting chat response: {e}")
-            return None
+            return "I apologize, but I encountered an error. Please try again."
 
     def get_available_models(self) -> List[str]:
         """Get list of available models"""

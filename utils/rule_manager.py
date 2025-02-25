@@ -45,7 +45,7 @@ class RuleManager:
     def __init__(self, db):
         self.db = db
 
-    async def get_rules(self, account_id: int) -> List[Rule]:
+    async def get_rules(self, account_id: int = 1) -> List[Rule]:
         """Get active rules for an account"""
         try:
             result = await self.db.supabase.table('bot_rules').select(
@@ -60,6 +60,33 @@ class RuleManager:
         except Exception as e:
             logger.error(f"Error getting rules: {e}")
             return []
+
+    # For backward compatibility with old code
+    def get_rules_sync(self) -> List[GPTRule]:
+        """Get rules synchronously (for backward compatibility)"""
+        try:
+            # Return empty list for backward compatibility
+            return []
+        except Exception as e:
+            logger.error(f"Error getting rules synchronously: {e}")
+            return []
+            
+    def get_formatted_rules(self, rules: List[Rule] = None) -> str:
+        """Format rules for display"""
+        if rules is None:
+            # For backward compatibility
+            return "No active rules configured."
+            
+        if not rules:
+            return "No active rules configured."
+            
+        formatted = "Current Bot Rules:\n\n"
+        for i, rule in enumerate(rules, 1):
+            formatted += f"{i}. {rule.text}"
+            if rule.priority > 0:
+                formatted += f" (Priority: {rule.priority})"
+            formatted += "\n"
+        return formatted
 
     async def add_rule(self, account_id: int, rule_text: str, priority: int = 0) -> Optional[Rule]:
         """Add a new rule for an account"""
@@ -100,17 +127,4 @@ class RuleManager:
             return True
         except Exception as e:
             logger.error(f"Error deleting rule: {e}")
-            return False
-
-    def get_formatted_rules(self, rules: List[Rule]) -> str:
-        """Format rules for display"""
-        if not rules:
-            return "No active rules configured."
-            
-        formatted = "Current Bot Rules:\n\n"
-        for i, rule in enumerate(rules, 1):
-            formatted += f"{i}. {rule.text}"
-            if rule.priority > 0:
-                formatted += f" (Priority: {rule.priority})"
-            formatted += "\n"
-        return formatted 
+            return False 
