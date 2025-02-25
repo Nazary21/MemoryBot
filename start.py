@@ -1,17 +1,25 @@
 import os
 import uvicorn
+import sys
 
 # Get the PORT environment variable, default to 8000 if not set
-port = os.environ.get('PORT', '8000')
+port_str = os.environ.get('PORT', '8000')
 
 # Print debug information
-print(f"Starting application with PORT={port}")
-print(f"Environment variables: {dict(os.environ)}")
+print(f"PORT environment variable: {port_str!r}")
+print(f"PORT type: {type(port_str)}")
+print(f"All environment variables: {list(os.environ.keys())}")
 
-# Convert port to integer
-port_int = int(port)
-print(f"Converted PORT to integer: {port_int}")
-
-# Start the application using uvicorn's Python API
-if __name__ == "__main__":
-    uvicorn.run("bot:app", host="0.0.0.0", port=port_int) 
+try:
+    # Convert port to integer
+    port_int = int(port_str)
+    print(f"Converted PORT to integer: {port_int}")
+    
+    # Start the application using uvicorn's Python API
+    if __name__ == "__main__":
+        print(f"Starting uvicorn with host='0.0.0.0', port={port_int}")
+        uvicorn.run("bot:app", host="0.0.0.0", port=port_int)
+except ValueError as e:
+    print(f"ERROR: Could not convert PORT value '{port_str}' to integer: {e}")
+    print(f"Python version: {sys.version}")
+    sys.exit(1)
