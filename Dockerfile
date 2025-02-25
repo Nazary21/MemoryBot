@@ -12,5 +12,5 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . .
 
-# Use shell form of CMD to allow environment variable substitution
-CMD uvicorn bot:app --host 0.0.0.0 --port ${PORT:-8000} 
+# Use the existing start.py script that properly handles the PORT environment variable
+CMD ["python", "start.py"] 
