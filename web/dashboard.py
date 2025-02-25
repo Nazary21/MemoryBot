@@ -254,12 +254,19 @@ async def set_provider(provider: str = Form(...), username: str = Depends(verify
 @router.post("/update_config")
 async def update_config(
     api_key: str = Form(...),
-    temperature: float = Form(0.7),
+    temperature: float = Form(1.1),
     max_tokens: int = Form(2000),
     username: str = Depends(verify_credentials)
 ):
     """Update provider API key and AI settings"""
     try:
+        # Validate inputs
+        if not (0 <= temperature <= 2):
+            raise HTTPException(status_code=400, detail="Temperature must be between 0 and 2")
+            
+        if not (100 <= max_tokens <= 3000):
+            raise HTTPException(status_code=400, detail="Max tokens must be between 100 and 3000")
+
         # Update provider config
         provider = ai_manager.get_active_provider()
         if not ai_manager.update_provider_config(provider, api_key):
@@ -271,10 +278,16 @@ async def update_config(
             "temperature": temperature,
             "max_tokens": max_tokens
         }
-        await ai_handler.update_model_settings(account_id=1, settings=settings)
+        success = await ai_handler.update_model_settings(account_id=1, settings=settings)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update AI settings")
 
         return RedirectResponse(url="/dashboard", status_code=303)
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error in update_config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/add_rule")

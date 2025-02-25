@@ -428,14 +428,18 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         memory_manager = await get_memory_manager(chat_id)
         
         try:
-            # Get conversation context from memory (works in both normal and fallback mode)
+            # Get conversation context from memory
             debug_log(chat_id, "Fetching memory")
             short_term_memory = await memory_manager.get_memory(chat_id, 'short_term')
             debug_log(chat_id, "Memory fetched", f"Context size: {len(short_term_memory)}")
             
-            # Prepare messages for AI
+            # Get active rules
+            rules = await rule_manager.get_rules(account_id=1)
+            rules_text = rule_manager.get_formatted_rules(rules)
+            
+            # Prepare messages for AI with rules
             messages = [
-                {"role": "system", "content": "You are a helpful assistant. Be concise and friendly."}
+                {"role": "system", "content": f"You are a helpful assistant. Follow these rules:\n{rules_text}"}
             ]
             
             # Add context from memory

@@ -11,38 +11,23 @@ class MemoryManager:
     def __init__(self, account_id: int, db):
         self.account_id = account_id
         self.db = db
-        self.memory_dir = "memory"
+        
+        # Ensure memory directory exists
+        self.memory_dir = f"memory/account_{account_id}"
+        os.makedirs(self.memory_dir, exist_ok=True)
+        
+        # Initialize file paths
         self.short_term_file = os.path.join(self.memory_dir, "short_term.json")
         self.mid_term_file = os.path.join(self.memory_dir, "mid_term.json")
         self.whole_history_file = os.path.join(self.memory_dir, "whole_history.json")
         self.history_file = os.path.join(self.memory_dir, "history_context.json")
-        self._ensure_memory_files()
-
-    def _ensure_memory_files(self):
-        """Ensure memory directory and files exist"""
-        os.makedirs(self.memory_dir, exist_ok=True)
         
-        # Initialize all memory files if they don't exist
-        files = [
-            self.short_term_file,
-            self.mid_term_file,
-            self.whole_history_file,
-            self.history_file
-        ]
-        
-        for file in files:
-            if not os.path.exists(file):
-                with open(file, 'w') as f:
+        # Initialize files if they don't exist
+        for file_path in [self.short_term_file, self.mid_term_file, 
+                         self.whole_history_file, self.history_file]:
+            if not os.path.exists(file_path):
+                with open(file_path, 'w') as f:
                     json.dump([], f)
-            else:
-                # Verify file is valid JSON
-                try:
-                    with open(file, 'r') as f:
-                        json.load(f)
-                except json.JSONDecodeError:
-                    # If file is corrupted, reinitialize it
-                    with open(file, 'w') as f:
-                        json.dump([], f)
 
     def update_memory(self, user_message: Dict, assistant_message: Dict) -> None:
         """Update all memory levels with new messages"""
@@ -87,10 +72,22 @@ class MemoryManager:
         try:
             history_context = self._load_memory(self.history_file)
             if not history_context:
+                logger.info(f"No history context found for account {self.account_id}")
                 return ""
-            return "\n".join([entry.get("summary", "") for entry in history_context])
+            
+            # Format context entries with timestamps
+            formatted_entries = []
+            for entry in history_context:
+                timestamp = entry.get("timestamp", "")
+                summary = entry.get("summary", "")
+                if timestamp and summary:
+                    formatted_entries.append(f"[{timestamp}] {summary}")
+                else:
+                    formatted_entries.append(summary)
+            
+            return "\n".join(formatted_entries)
         except Exception as e:
-            logger.error(f"Error getting history context: {e}")
+            logger.error(f"Error getting history context for account {self.account_id}: {e}")
             return ""
 
     def _load_memory(self, file_path: str) -> list:
