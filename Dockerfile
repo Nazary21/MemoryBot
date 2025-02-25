@@ -10,12 +10,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements_filtered.txt && \
     pip install --no-cache-dir supabase==2.12.0 --no-deps
 
-# Copy start.py first to ensure it's available
-COPY start.py .
-
-# Copy the rest of the application
+# Copy the application
 COPY . .
 
-# Use the Python script to start the application
-# This bypasses the shell variable substitution issues
-CMD ["python", "start.py"]
+# No CMD or ENTRYPOINT - this will be handled by Railway's Custom Start Command
