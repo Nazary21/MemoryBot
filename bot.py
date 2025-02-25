@@ -657,7 +657,7 @@ try:
     application.add_handler(CommandHandler("model", model_command))
     # Update message handler to use Mention filter or reply filter
     application.add_handler(MessageHandler(
-        (filters.TEXT & ~filters.COMMAND & (filters.Mention | filters.REPLY)),
+        filters.TEXT & ~filters.COMMAND & (filters.Entity("mention") | filters.REPLY),
         message_handler
     ))
     logger.info("Handlers added successfully")
