@@ -6,9 +6,10 @@ COPY requirements.txt .
 
 # Install dependencies with special handling for supabase
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir $(grep -v "supabase" requirements.txt) && \
+    grep -v "^#" requirements.txt | grep -v "supabase" > requirements_filtered.txt && \
+    pip install --no-cache-dir -r requirements_filtered.txt && \
     pip install --no-cache-dir supabase==2.12.0 --no-deps
 
 COPY . .
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"] 
+CMD ["uvicorn", "bot:app", "--host", "0.0.0.0", "--port", "8000"] 
