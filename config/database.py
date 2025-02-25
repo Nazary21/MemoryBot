@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 import logging
+import importlib.metadata
 
 # Configure logging specifically for this module
 logger = logging.getLogger(__name__)
@@ -25,7 +26,15 @@ def init_supabase():
             
         logger.info(f"Initializing Supabase client with URL: {SUPABASE_URL[:10]}...")
         
-        # Try the simplest initialization first
+        # Check if supabase package is installed
+        try:
+            supabase_version = importlib.metadata.version('supabase')
+            logger.info(f"Detected supabase version: {supabase_version}")
+        except importlib.metadata.PackageNotFoundError:
+            logger.error("Supabase package is not installed. Please install it with: pip install supabase>=2.3.0")
+            return None
+        
+        # Initialize Supabase client using the modern approach
         try:
             from supabase import create_client
             client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -33,51 +42,17 @@ def init_supabase():
             
             # Test connection
             try:
-                test_result = client.table('accounts').select('count(*)', count='exact').limit(1).execute()
+                # Modern API uses .from_() instead of .table()
+                test_result = client.from_('accounts').select('count', count='exact').limit(1).execute()
                 logger.info("Supabase connection test successful")
             except Exception as test_error:
                 logger.warning(f"Supabase connection test failed: {test_error}")
+                # Continue anyway as the table might not exist yet
                 
             return client
         except Exception as e:
-            logger.warning(f"Standard initialization failed: {e}")
-            
-            # Try direct Client import
-            try:
-                logger.info("Trying direct Client import...")
-                from supabase import Client
-                client = Client(SUPABASE_URL, SUPABASE_KEY)
-                logger.info("Direct Client import successful")
-                return client
-            except Exception as client_error:
-                logger.warning(f"Direct Client import failed: {client_error}")
-                
-                # Try with postgrest
-                try:
-                    logger.info("Trying with postgrest...")
-                    import httpx
-                    from supabase.lib.client_options import ClientOptions
-                    
-                    # Check supabase version
-                    import supabase
-                    logger.info(f"Supabase version: {getattr(supabase, '__version__', 'unknown')}")
-                    
-                    # Try to create a minimal client
-                    if hasattr(supabase, 'Client'):
-                        client = supabase.Client(SUPABASE_URL, SUPABASE_KEY)
-                    else:
-                        # For older versions
-                        from supabase import create_client
-                        client = create_client(SUPABASE_URL, SUPABASE_KEY)
-                        
-                    logger.info("Postgrest approach successful")
-                    return client
-                except Exception as postgrest_error:
-                    logger.error(f"Postgrest approach failed: {postgrest_error}")
-        
-        # If all attempts fail
-        logger.error("All Supabase initialization attempts failed")
-        return None
+            logger.error(f"Error initializing Supabase client: {e}")
+            return None
     except Exception as e:
         logger.error(f"Error initializing Supabase: {e}")
         return None

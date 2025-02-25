@@ -57,82 +57,101 @@ class Database:
             
             # Try to check if the bot_rules table exists
             try:
-                result = await self.supabase.table('bot_rules').select('count(*)', count='exact').limit(1).execute()
+                result = await self.supabase.from_('bot_rules').select('count', count='exact').limit(1).execute()
                 logger.info(f"bot_rules table exists, contains {result.count} rules")
                 # Even if table exists, we'll continue to make sure all tables are created
             except Exception as check_error:
                 logger.info(f"bot_rules table check failed, will create schema: {check_error}")
             
             # Create tables using raw SQL for more control
+            tables_created = 0
             try:
                 logger.info("Creating database tables if they don't exist...")
                 
                 # Create bot_rules table
-                await self.supabase.rpc('execute_sql', {
-                    'query': """
-                    CREATE TABLE IF NOT EXISTS bot_rules (
-                        id SERIAL PRIMARY KEY,
-                        account_id INTEGER NOT NULL,
-                        rule_text TEXT NOT NULL,
-                        priority INTEGER DEFAULT 0,
-                        is_active BOOLEAN DEFAULT TRUE,
-                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                    );
-                    """
-                }).execute()
-                logger.info("bot_rules table created or verified")
+                try:
+                    await self.supabase.rpc('execute_sql', {
+                        'query': """
+                        CREATE TABLE IF NOT EXISTS bot_rules (
+                            id SERIAL PRIMARY KEY,
+                            account_id INTEGER NOT NULL,
+                            rule_text TEXT NOT NULL,
+                            priority INTEGER DEFAULT 0,
+                            is_active BOOLEAN DEFAULT TRUE,
+                            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                        );
+                        """
+                    }).execute()
+                    logger.info("bot_rules table created or verified")
+                    tables_created += 1
+                except Exception as e:
+                    logger.error(f"Error creating bot_rules table: {e}")
                 
                 # Create accounts table if it doesn't exist
-                await self.supabase.rpc('execute_sql', {
-                    'query': """
-                    CREATE TABLE IF NOT EXISTS accounts (
-                        id SERIAL PRIMARY KEY,
-                        name TEXT,
-                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                    );
-                    """
-                }).execute()
-                logger.info("accounts table created or verified")
+                try:
+                    await self.supabase.rpc('execute_sql', {
+                        'query': """
+                        CREATE TABLE IF NOT EXISTS accounts (
+                            id SERIAL PRIMARY KEY,
+                            name TEXT,
+                            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                        );
+                        """
+                    }).execute()
+                    logger.info("accounts table created or verified")
+                    tables_created += 1
+                except Exception as e:
+                    logger.error(f"Error creating accounts table: {e}")
                 
                 # Create temporary_accounts table if it doesn't exist
-                await self.supabase.rpc('execute_sql', {
-                    'query': """
-                    CREATE TABLE IF NOT EXISTS temporary_accounts (
-                        id SERIAL PRIMARY KEY,
-                        telegram_chat_id BIGINT UNIQUE NOT NULL,
-                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                        expires_at TIMESTAMP WITH TIME ZONE
-                    );
-                    """
-                }).execute()
-                logger.info("temporary_accounts table created or verified")
+                try:
+                    await self.supabase.rpc('execute_sql', {
+                        'query': """
+                        CREATE TABLE IF NOT EXISTS temporary_accounts (
+                            id SERIAL PRIMARY KEY,
+                            telegram_chat_id BIGINT UNIQUE NOT NULL,
+                            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                            expires_at TIMESTAMP WITH TIME ZONE
+                        );
+                        """
+                    }).execute()
+                    logger.info("temporary_accounts table created or verified")
+                    tables_created += 1
+                except Exception as e:
+                    logger.error(f"Error creating temporary_accounts table: {e}")
                 
                 # Create chat_history table if it doesn't exist
-                await self.supabase.rpc('execute_sql', {
-                    'query': """
-                    CREATE TABLE IF NOT EXISTS chat_history (
-                        id SERIAL PRIMARY KEY,
-                        account_id INTEGER,
-                        telegram_chat_id BIGINT,
-                        role TEXT NOT NULL,
-                        content TEXT NOT NULL,
-                        memory_type TEXT DEFAULT 'short_term',
-                        timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                    );
-                    """
-                }).execute()
-                logger.info("chat_history table created or verified")
+                try:
+                    await self.supabase.rpc('execute_sql', {
+                        'query': """
+                        CREATE TABLE IF NOT EXISTS chat_history (
+                            id SERIAL PRIMARY KEY,
+                            account_id INTEGER,
+                            telegram_chat_id BIGINT,
+                            role TEXT NOT NULL,
+                            content TEXT NOT NULL,
+                            memory_type TEXT DEFAULT 'short_term',
+                            timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                        );
+                        """
+                    }).execute()
+                    logger.info("chat_history table created or verified")
+                    tables_created += 1
+                except Exception as e:
+                    logger.error(f"Error creating chat_history table: {e}")
                 
-                logger.info("✅ All database tables created or verified successfully")
+                if tables_created > 0:
+                    logger.info(f"✅ Created or verified {tables_created} tables successfully")
                 
                 # Create default account if it doesn't exist (for backward compatibility)
                 try:
-                    account_result = await self.supabase.table('accounts').select('*').eq('id', 1).execute()
+                    account_result = await self.supabase.from_('accounts').select('*').eq('id', 1).execute()
                     if not account_result.data:
                         logger.info("Creating default account (id=1)")
-                        await self.supabase.table('accounts').insert({'id': 1, 'name': 'Default Account'}).execute()
+                        await self.supabase.from_('accounts').insert({'id': 1, 'name': 'Default Account'}).execute()
+                        logger.info("Default account created successfully")
                 except Exception as account_error:
                     logger.error(f"Error checking/creating default account: {account_error}")
                 
@@ -143,7 +162,7 @@ class Database:
                 try:
                     logger.info("Trying alternative schema creation approach...")
                     # Create minimal bot_rules table for rules to work
-                    await self.supabase.postgrest.rpc('execute_sql', {
+                    await self.supabase.rpc('execute_sql', {
                         'sql': "CREATE TABLE IF NOT EXISTS bot_rules (id SERIAL PRIMARY KEY, account_id INTEGER NOT NULL, rule_text TEXT NOT NULL, priority INTEGER DEFAULT 0, is_active BOOLEAN DEFAULT TRUE);"
                     }).execute()
                     logger.info("Alternative schema creation successful")
@@ -169,13 +188,13 @@ class Database:
                 return self._get_or_create_temporary_account_fallback(chat_id)
                 
             # Check for existing temporary account
-            result = await self.supabase.table('temporary_accounts').select('*').eq('telegram_chat_id', chat_id).execute()
+            result = await self.supabase.from_('temporary_accounts').select('*').eq('telegram_chat_id', chat_id).execute()
             
             if result.data:
                 return result.data[0]
                 
             # Create new temporary account
-            result = await self.supabase.table('temporary_accounts').insert({
+            result = await self.supabase.from_('temporary_accounts').insert({
                 'telegram_chat_id': chat_id,
                 'expires_at': (datetime.now() + timedelta(days=30)).isoformat()
             }).execute()
@@ -229,7 +248,7 @@ class Database:
                 logger.warning("Using file-based fallback for get_account_by_chat")
                 return None
                 
-            result = await self.supabase.table('account_chats').select(
+            result = await self.supabase.from_('account_chats').select(
                 'accounts(*)'
             ).eq('telegram_chat_id', chat_id).execute()
             
@@ -247,7 +266,7 @@ class Database:
                 self._store_chat_message_fallback(account_id, chat_id, role, content, memory_type)
                 return
                 
-            await self.supabase.table('chat_history').insert({
+            await self.supabase.from_('chat_history').insert({
                 'account_id': account_id,
                 'telegram_chat_id': chat_id,
                 'role': role,
@@ -293,7 +312,7 @@ class Database:
                 logger.warning("Using file-based fallback for get_chat_memory")
                 return self._get_chat_memory_fallback(chat_id, memory_type, limit)
                 
-            result = await self.supabase.table('chat_history').select('*').eq(
+            result = await self.supabase.from_('chat_history').select('*').eq(
                 'telegram_chat_id', chat_id
             ).eq('memory_type', memory_type).order('timestamp', desc=True).limit(limit).execute()
             
@@ -348,7 +367,7 @@ class Database:
             hashed_password = pwd_context.hash(password)
             
             # Create account
-            account_result = await self.supabase.table('accounts').insert({
+            account_result = await self.supabase.from_('accounts').insert({
                 'name': name
             }).execute()
             
@@ -359,14 +378,14 @@ class Database:
             account = account_result.data[0]
             
             # Create user
-            await self.supabase.table('account_users').insert({
+            await self.supabase.from_('account_users').insert({
                 'account_id': account['id'],
                 'email': email,
                 'hashed_password': hashed_password
             }).execute()
             
             # Link chat
-            await self.supabase.table('account_chats').insert({
+            await self.supabase.from_('account_chats').insert({
                 'account_id': account['id'],
                 'telegram_chat_id': chat_id
             }).execute()
@@ -393,7 +412,7 @@ class Database:
                 return
                 
             # Migrate chat history with memory type preservation
-            await self.supabase.table('chat_history').insert({
+            await self.supabase.from_('chat_history').insert({
                 'account_id': new_account_id,
                 'telegram_chat_id': temp_account['telegram_chat_id'],
                 'role': 'system',
@@ -402,14 +421,14 @@ class Database:
             }).execute()
             
             # Mark old account as migrated
-            await self.supabase.table('migration_mapping').insert({
+            await self.supabase.from_('migration_mapping').insert({
                 'old_chat_id': chat_id,
                 'new_account_id': new_account_id,
                 'migration_status': 'completed'
             }).execute()
             
             # Delete temporary account
-            await self.supabase.table('temporary_accounts').delete().eq('id', temp_account['id']).execute()
+            await self.supabase.from_('temporary_accounts').delete().eq('id', temp_account['id']).execute()
             
             logger.info(f"Successfully migrated temporary account {temp_account['id']} to permanent account {new_account_id}")
             
@@ -424,7 +443,7 @@ class Database:
                 logger.error("Cannot get memory by type: Supabase client is not initialized")
                 return []
                 
-            result = await self.supabase.table('chat_history').select('*').eq(
+            result = await self.supabase.from_('chat_history').select('*').eq(
                 'account_id', account_id
             ).eq('memory_type', memory_type).order('timestamp', desc=True).limit(limit).execute()
             
@@ -440,7 +459,7 @@ class Database:
                 logger.error("Cannot store history context: Supabase client is not initialized")
                 return
                 
-            await self.supabase.table('history_context').insert({
+            await self.supabase.from_('history_context').insert({
                 'account_id': account_id,
                 'summary': summary,
                 'category': category
@@ -456,7 +475,7 @@ class Database:
                 logger.error("Cannot get history context: Supabase client is not initialized")
                 return []
                 
-            result = await self.supabase.table('history_context').select('*').eq(
+            result = await self.supabase.from_('history_context').select('*').eq(
                 'account_id', account_id
             ).order('created_at', desc=True).limit(limit).execute()
             
@@ -472,7 +491,7 @@ class Database:
                 logger.error("Cannot cleanup old memory: Supabase client is not initialized")
                 return
                 
-            await self.supabase.table('chat_history').delete().eq(
+            await self.supabase.from_('chat_history').delete().eq(
                 'account_id', account_id
             ).eq('memory_type', memory_type).lt('timestamp', older_than.isoformat()).execute()
         except Exception as e:
@@ -505,7 +524,7 @@ class Database:
                 logger.error("Cannot get all accounts: Supabase client is not initialized")
                 return []
                 
-            result = await self.supabase.table('accounts').select(
+            result = await self.supabase.from_('accounts').select(
                 '*',
                 count='exact'
             ).execute()
@@ -549,7 +568,7 @@ class Database:
                 logger.error("Cannot authenticate user: Supabase client is not initialized")
                 return None
                 
-            result = await self.supabase.table('account_users').select(
+            result = await self.supabase.from_('account_users').select(
                 '*'
             ).eq('email', email).single().execute()
             
@@ -567,7 +586,7 @@ class Database:
                 logger.error("Cannot get account: Supabase client is not initialized")
                 return None
                 
-            result = await self.supabase.table('accounts').select(
+            result = await self.supabase.from_('accounts').select(
                 '*'
             ).eq('id', account_id).single().execute()
             return result.data
@@ -582,7 +601,7 @@ class Database:
                 logger.error("Cannot get user: Supabase client is not initialized")
                 return None
                 
-            result = await self.supabase.table('account_users').select(
+            result = await self.supabase.from_('account_users').select(
                 '*'
             ).eq('id', user_id).single().execute()
             return result.data
@@ -674,7 +693,7 @@ class Database:
     async def track_usage(self, account_id: int, tokens_used: int) -> None:
         """Track token usage for an account"""
         try:
-            await self.supabase.table('usage_stats').insert({
+            await self.supabase.from_('usage_stats').insert({
                 'account_id': account_id,
                 'tokens_used': tokens_used,
                 'timestamp': datetime.now().isoformat()

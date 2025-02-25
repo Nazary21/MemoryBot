@@ -80,6 +80,12 @@ async def startup_event():
         logger.info("Setting up database tables...")
         await db.setup_tables()
         
+        # Check database status
+        if db.initialized:
+            logger.info("Database initialized successfully")
+        else:
+            logger.warning("Database not initialized, using fallback mode")
+        
         # Create default rules for account 1 if they don't exist
         logger.info("Checking and creating default rules...")
         try:
@@ -89,10 +95,25 @@ async def startup_event():
                 success = await rule_manager.create_default_rules(account_id=1)
                 if success:
                     logger.info("Default rules created successfully")
+                    # Verify rules were created
+                    rules = await rule_manager.get_rules(account_id=1)
+                    logger.info(f"Verified {len(rules)} default rules exist")
                 else:
                     logger.error("Failed to create default rules")
+            else:
+                logger.info(f"Found {len(rules)} existing rules for account 1")
         except Exception as rules_error:
             logger.error(f"Error checking/creating default rules: {rules_error}")
+            # Try to create default rules using fallback method
+            try:
+                logger.info("Attempting to create default rules using fallback method...")
+                success = rule_manager._create_default_rules_fallback(account_id=1)
+                if success:
+                    logger.info("Default rules created using fallback method")
+                else:
+                    logger.error("Failed to create default rules using fallback method")
+            except Exception as fallback_error:
+                logger.error(f"Error in fallback rule creation: {fallback_error}")
         
         # Initialize application
         logger.info("Running application initialization...")

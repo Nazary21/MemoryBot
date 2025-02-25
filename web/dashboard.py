@@ -162,7 +162,7 @@ async def check_database_status() -> Dict[str, bool | str]:
             
         # Try a simple query to test connection
         try:
-            result = await db.supabase.table('accounts').select('count(*)', count='exact').limit(1).execute()
+            result = await db.supabase.from_('accounts').select('count', count='exact').limit(1).execute()
             return {"status": True, "message": f"Connected, found {result.count} accounts", "fallback": False}
         except Exception as e:
             db.fallback_mode = True

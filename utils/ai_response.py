@@ -23,7 +23,7 @@ class AIResponseHandler:
     async def get_account_model_settings(self, account_id: int) -> Dict:
         """Get AI model settings for an account"""
         try:
-            result = await self.db.supabase.table('ai_model_settings').select(
+            result = await self.db.supabase.from_('ai_model_settings').select(
                 '*'
             ).eq('account_id', account_id).single().execute()
             
@@ -47,7 +47,7 @@ class AIResponseHandler:
     async def update_model_settings(self, account_id: int, settings: Dict) -> bool:
         """Update AI model settings for an account"""
         try:
-            await self.db.supabase.table('ai_model_settings').upsert({
+            await self.db.supabase.from_('ai_model_settings').upsert({
                 'account_id': account_id,
                 'model_name': settings.get('model', self.default_model),
                 'temperature': settings.get('temperature', self.default_settings['temperature']),

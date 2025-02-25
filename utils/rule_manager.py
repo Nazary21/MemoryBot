@@ -62,7 +62,7 @@ class RuleManager:
                 # Use file-based fallback
                 return self._get_rules_fallback(account_id)
                 
-            result = await self.db.supabase.table('bot_rules').select(
+            result = await self.db.supabase.from_('bot_rules').select(
                 '*'
             ).eq('account_id', account_id).eq('is_active', True).order('priority', desc=True).execute()
             
@@ -72,7 +72,7 @@ class RuleManager:
                 await self.create_default_rules(account_id)
                 
                 # Try to get rules again
-                result = await self.db.supabase.table('bot_rules').select(
+                result = await self.db.supabase.from_('bot_rules').select(
                     '*'
                 ).eq('account_id', account_id).eq('is_active', True).order('priority', desc=True).execute()
             
@@ -139,19 +139,19 @@ class RuleManager:
                 
             # Check if account exists
             try:
-                account_result = await self.db.supabase.table('accounts').select('*').eq('id', account_id).execute()
+                account_result = await self.db.supabase.from_('accounts').select('*').eq('id', account_id).execute()
                 
                 # If account doesn't exist, create it
                 if not account_result.data:
                     logger.info(f"Account {account_id} doesn't exist. Creating it.")
-                    await self.db.supabase.table('accounts').insert({'id': account_id, 'name': f'Account {account_id}'}).execute()
+                    await self.db.supabase.from_('accounts').insert({'id': account_id, 'name': f'Account {account_id}'}).execute()
             except Exception as account_error:
                 logger.error(f"Error checking/creating account: {account_error}")
                 # Continue anyway to try to create rules
             
             # Check if rules already exist for this account
             try:
-                existing_rules = await self.db.supabase.table('bot_rules').select('*').eq('account_id', account_id).execute()
+                existing_rules = await self.db.supabase.from_('bot_rules').select('*').eq('account_id', account_id).execute()
                 if existing_rules.data and len(existing_rules.data) > 0:
                     logger.info(f"Account {account_id} already has {len(existing_rules.data)} rules. Skipping default rule creation.")
                     return True
@@ -165,7 +165,7 @@ class RuleManager:
                 try:
                     # Try direct insert first
                     try:
-                        result = await self.db.supabase.table('bot_rules').insert({
+                        result = await self.db.supabase.from_('bot_rules').insert({
                             'account_id': account_id,
                             'rule_text': rule["text"],
                             'priority': rule["priority"],
@@ -283,7 +283,7 @@ class RuleManager:
                 
             # Try to insert the rule
             try:
-                result = await self.db.supabase.table('bot_rules').insert({
+                result = await self.db.supabase.from_('bot_rules').insert({
                     'account_id': account_id,
                     'rule_text': rule_text,
                     'priority': priority,
@@ -369,7 +369,7 @@ class RuleManager:
     async def update_rule(self, rule_id: int, account_id: int, updates: Dict) -> bool:
         """Update an existing rule"""
         try:
-            await self.db.supabase.table('bot_rules').update(
+            await self.db.supabase.from_('bot_rules').update(
                 updates
             ).eq('id', rule_id).eq('account_id', account_id).execute()
             return True
@@ -398,7 +398,7 @@ class RuleManager:
             
             try:
                 # Try to find the rule by text and account_id
-                result = await self.db.supabase.table('bot_rules').select('*').eq(
+                result = await self.db.supabase.from_('bot_rules').select('*').eq(
                     'account_id', account_id
                 ).eq('rule_text', rule.text).execute()
                 
@@ -407,7 +407,7 @@ class RuleManager:
                     logger.info(f"Found rule ID {rule_id} for deletion")
                     
                     # Delete the rule
-                    await self.db.supabase.table('bot_rules').delete().eq('id', rule_id).execute()
+                    await self.db.supabase.from_('bot_rules').delete().eq('id', rule_id).execute()
                     logger.info(f"Rule {rule_id} deleted successfully")
                     return True
                 else:
