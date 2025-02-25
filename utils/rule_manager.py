@@ -12,6 +12,7 @@ class Rule:
     text: str
     priority: int = 0
     is_active: bool = True
+    category: str = "General"
 
 class GPTRule:
     def __init__(self, text: str, category: str = "General", priority: int = 0):
@@ -46,11 +47,11 @@ class RuleManager:
         self.db = db
         # Default rules that will be created for new accounts
         self.default_rules = [
-            {"text": "Be helpful, concise, and friendly.", "priority": 10, "category": "General"},
-            {"text": "Respond in the same language as the user's message.", "priority": 9, "category": "Language"},
-            {"text": "If you learn someone's name, use it in future responses.", "priority": 8, "category": "Personalization"},
-            {"text": "Keep track of important information shared in conversation.", "priority": 7, "category": "Memory"},
-            {"text": "Be respectful and maintain a positive tone.", "priority": 6, "category": "Tone"}
+            {"text": "Be helpful, concise, and friendly.", "priority": 1, "category": "General"},
+            {"text": "Respond in the same language as the user's message.", "priority": 1, "category": "Language"},
+            {"text": "If you learn someone's name, use it in future responses.", "priority": 1, "category": "Personalization"},
+            {"text": "Keep track of important information shared in conversation.", "priority": 1, "category": "Memory"},
+            {"text": "Be respectful and maintain a positive tone.", "priority": 1, "category": "Tone"}
         ]
 
     async def get_rules(self, account_id: int = 1) -> List[Rule]:
@@ -61,6 +62,9 @@ class RuleManager:
                 logger.error("Cannot get rules: Supabase client is not initialized")
                 # Use file-based fallback
                 return self._get_rules_fallback(account_id)
+                
+            # Ensure database schema is up to date
+            await self._migrate_add_category_column()
                 
             result = await self.db.supabase.from_('bot_rules').select(
                 '*'
@@ -79,7 +83,8 @@ class RuleManager:
             return [Rule(
                 text=rule['rule_text'],
                 priority=rule['priority'],
-                is_active=rule['is_active']
+                is_active=rule['is_active'],
+                category=rule.get('category', 'General')  # Get category with fallback
             ) for rule in result.data]
         except Exception as e:
             logger.error(f"Error getting rules: {e}")
@@ -258,20 +263,28 @@ class RuleManager:
 
     def get_formatted_rules(self, rules: List[Rule] = None) -> str:
         """Format rules for display"""
-        if rules is None:
-            # For backward compatibility
+        if rules is None or not rules:
             return "No active rules configured."
             
-        if not rules:
-            return "No active rules configured."
-            
+        # Group rules by category
+        rules_by_category = {}
+        for rule in rules:
+            category = getattr(rule, 'category', 'General')  # Default to General if no category
+            if category not in rules_by_category:
+                rules_by_category[category] = []
+            rules_by_category[category].append(rule)
+        
+        # Format output
         formatted = "Current Bot Rules:\n\n"
-        for i, rule in enumerate(rules, 1):
-            formatted += f"{i}. {rule.text}"
-            if rule.priority > 0:
-                formatted += f" (Priority: {rule.priority})"
+        for category, category_rules in rules_by_category.items():
+            formatted += f"{category}:\n"
+            for i, rule in enumerate(category_rules, 1):
+                formatted += f"{i}. {rule.text}"
+                if rule.priority == 0:  # Only show if inactive
+                    formatted += " (Inactive)"
+                formatted += "\n"
             formatted += "\n"
-        return formatted
+        return formatted.strip()
 
     async def add_rule(self, account_id: int, rule_text: str, category: str = "General", priority: int = 0) -> Optional[Rule]:
         """Add a new rule for an account"""
@@ -281,13 +294,17 @@ class RuleManager:
                 # Use file-based fallback
                 return self._add_rule_fallback(account_id, rule_text, category, priority)
                 
+            # Ensure database schema is up to date
+            await self._migrate_add_category_column()
+                
             # Try to insert the rule
             try:
                 result = await self.db.supabase.from_('bot_rules').insert({
                     'account_id': account_id,
                     'rule_text': rule_text,
                     'priority': priority,
-                    'is_active': True
+                    'is_active': True,
+                    'category': category
                 }).execute()
                 
                 if result.data:
@@ -296,7 +313,8 @@ class RuleManager:
                     return Rule(
                         text=rule_data['rule_text'],
                         priority=rule_data['priority'],
-                        is_active=rule_data['is_active']
+                        is_active=rule_data['is_active'],
+                        category=rule_data.get('category', 'General')
                     )
                 else:
                     logger.warning("No data returned from rule insertion")
@@ -308,12 +326,12 @@ class RuleManager:
                     logger.info("Trying alternative rule insertion with RPC...")
                     await self.db.supabase.rpc('execute_sql', {
                         'query': f"""
-                        INSERT INTO bot_rules (account_id, rule_text, priority, is_active)
-                        VALUES ({account_id}, '{rule_text.replace("'", "''")}', {priority}, TRUE)
+                        INSERT INTO bot_rules (account_id, rule_text, priority, is_active, category)
+                        VALUES ({account_id}, '{rule_text.replace("'", "''")}', {priority}, TRUE, '{category.replace("'", "''")}')
                         """
                     }).execute()
                     logger.info(f"Rule added via SQL: {rule_text}")
-                    return Rule(text=rule_text, priority=priority, is_active=True)
+                    return Rule(text=rule_text, priority=priority, is_active=True, category=category)
                 except Exception as sql_error:
                     logger.error(f"Error adding rule via SQL: {sql_error}")
             
@@ -369,12 +387,63 @@ class RuleManager:
     async def update_rule(self, rule_id: int, account_id: int, updates: Dict) -> bool:
         """Update an existing rule"""
         try:
+            if self.db.supabase is None:
+                logger.error("Cannot update rule: Supabase client is not initialized")
+                # Use file-based fallback
+                return await self._update_rule_fallback(rule_id, account_id, updates)
+                
             await self.db.supabase.from_('bot_rules').update(
                 updates
             ).eq('id', rule_id).eq('account_id', account_id).execute()
             return True
         except Exception as e:
             logger.error(f"Error updating rule: {e}")
+            return await self._update_rule_fallback(rule_id, account_id, updates)
+
+    async def _update_rule_fallback(self, rule_id: int, account_id: int, updates: Dict) -> bool:
+        """Fallback method to update a rule using file storage"""
+        try:
+            logger.info(f"Using file-based fallback to update rule {rule_id}")
+            
+            # Create memory directory if it doesn't exist
+            memory_dir = "memory"
+            os.makedirs(memory_dir, exist_ok=True)
+            
+            # Create rules file if it doesn't exist
+            rules_file = os.path.join(memory_dir, "bot_rules.json")
+            
+            # Check if file exists
+            if not os.path.exists(rules_file):
+                logger.error("Rules file doesn't exist")
+                return False
+
+            # Load existing rules
+            with open(rules_file, 'r') as f:
+                try:
+                    all_rules = json.load(f)
+                except json.JSONDecodeError:
+                    all_rules = []
+            
+            # Find and update the rule
+            updated = False
+            for rule in all_rules:
+                if rule.get('account_id') == account_id and rule.get('id') == rule_id:
+                    rule.update(updates)
+                    updated = True
+                    break
+            
+            if not updated:
+                logger.error(f"Could not find rule {rule_id} for account {account_id}")
+                return False
+            
+            # Save updated rules
+            with open(rules_file, 'w') as f:
+                json.dump(all_rules, f)
+            
+            logger.info(f"Rule updated in file storage")
+            return True
+        except Exception as e:
+            logger.error(f"Error in fallback rule update: {e}")
             return False
 
     async def delete_rule(self, rule_index: int, account_id: int) -> bool:
@@ -437,7 +506,7 @@ class RuleManager:
             # Check if file exists
             if not os.path.exists(rules_file):
                 logger.error("Rules file doesn't exist")
-            return False
+                return False
 
             # Load existing rules
             with open(rules_file, 'r') as f:
@@ -478,4 +547,46 @@ class RuleManager:
             return True
         except Exception as e:
             logger.error(f"Error in fallback rule deletion: {e}")
+            return False
+
+    async def _migrate_add_category_column(self):
+        """Add category column to bot_rules table if it doesn't exist"""
+        try:
+            if self.db.supabase is None:
+                logger.warning("Skipping migration: Supabase client not initialized")
+                return False
+
+            # Add category column if it doesn't exist
+            await self.db.supabase.rpc('execute_sql', {
+                'query': """
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (
+                        SELECT 1 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'bot_rules' 
+                        AND column_name = 'category'
+                    ) THEN
+                        ALTER TABLE bot_rules 
+                        ADD COLUMN category VARCHAR(50) NOT NULL DEFAULT 'General';
+                    END IF;
+                END $$;
+                """
+            }).execute()
+            
+            # Update existing rules with their proper categories
+            for rule in self.default_rules:
+                await self.db.supabase.rpc('execute_sql', {
+                    'query': f"""
+                    UPDATE bot_rules 
+                    SET category = '{rule['category']}' 
+                    WHERE rule_text = '{rule['text'].replace("'", "''")}' 
+                    AND category = 'General';
+                    """
+                }).execute()
+            
+            logger.info("Database migration completed successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Migration error: {e}")
             return False 
