@@ -10,17 +10,16 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements_filtered.txt && \
     pip install --no-cache-dir supabase==2.12.0 --no-deps
 
-# Copy entrypoint script first and make it executable
-COPY entrypoint.sh .
-RUN chmod +x entrypoint.sh
+# Copy the Python startup script first
+COPY start.py .
 
 # Copy the rest of the application
 COPY . .
 
 # Set a default PORT environment variable
-# This will be overridden by Railway if PORT is set in their variables
-# Railway will inject its own PORT value at runtime
+# Note: This is just a fallback, Railway should provide the actual PORT value
 ENV PORT=8000
 
-# Use ENTRYPOINT for the script and CMD for default arguments
-ENTRYPOINT ["./entrypoint.sh"] 
+# Use Python script to start the application
+# This avoids shell variable substitution issues by handling the PORT in Python code
+CMD ["python", "start.py"] 
