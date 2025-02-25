@@ -9,11 +9,16 @@ echo "==============================================="
 # Ensure PORT is set correctly
 PORT=${PORT:-8000}  # Default to 8000 if not set
 
-# Verify PORT is a number
-if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
-  echo "ERROR: PORT value '$PORT' is not a valid number"
-  echo "Setting default PORT=8000"
+echo "============ DEBUGGING PORT VARIABLE ============"
+echo "Raw PORT value: '$PORT'"
+echo "Expanded PORT value: $(echo $PORT)"
+echo "Checking if PORT is a number..."
+echo "$PORT" | grep -E '^[0-9]+$' > /dev/null
+if [ $? -ne 0 ]; then
+  echo "ERROR: PORT is not a valid number! Setting default to 8000."
   PORT=8000
+else
+  echo "✅ PORT is valid: $PORT"
 fi
 
 # Print Railway-specific variables if they exist
@@ -31,4 +36,5 @@ echo "Starting Uvicorn on PORT=$PORT"
 # Start the application with the resolved port
 # Using exec to replace the shell process with uvicorn
 # This ensures signals are properly passed to the application
-exec uvicorn bot:app --host 0.0.0.0 --port $(echo $PORT | tr -d '"') 
+echo "============ STARTING UVICORN ============"
+exec uvicorn bot:app --host 0.0.0.0 --port $PORT 

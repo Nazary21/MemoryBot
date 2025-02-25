@@ -21,5 +21,5 @@ COPY . .
 # Note: This is just a fallback, Railway should provide the actual PORT value
 ENV PORT=8000
 
-# Use entrypoint script to handle PORT variable expansion
-ENTRYPOINT ["/entrypoint.sh"]
+# Force shell expansion by using sh -c
+ENTRYPOINT ["sh", "-c", "/entrypoint.sh"]
