@@ -10,8 +10,12 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements_filtered.txt && \
     pip install --no-cache-dir supabase==2.12.0 --no-deps
 
-# Copy the application
+# Copy start.py first to ensure it's available
+COPY start.py .
+
+# Copy the rest of the application
 COPY . .
 
-# Directly use hardcoded port 8000 - no environment variable
-CMD ["sh", "-c", "echo 'PORT=${PORT:-8000}' && uvicorn bot:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Use the Python script to start the application
+# This bypasses the shell variable substitution issues
+CMD ["python", "start.py"]
