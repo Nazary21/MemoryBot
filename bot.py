@@ -80,6 +80,20 @@ async def startup_event():
         logger.info("Setting up database tables...")
         await db.setup_tables()
         
+        # Create default rules for account 1 if they don't exist
+        logger.info("Checking and creating default rules...")
+        try:
+            rules = await rule_manager.get_rules(account_id=1)
+            if not rules:
+                logger.info("No default rules found. Creating them...")
+                success = await rule_manager.create_default_rules(account_id=1)
+                if success:
+                    logger.info("Default rules created successfully")
+                else:
+                    logger.error("Failed to create default rules")
+        except Exception as rules_error:
+            logger.error(f"Error checking/creating default rules: {rules_error}")
+        
         # Initialize application
         logger.info("Running application initialization...")
         init_success = await init_application()
@@ -318,13 +332,33 @@ async def history_context_command(update: Update, context: ContextTypes.DEFAULT_
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display current bot rules"""
     try:
-        # Get rules for default account (id=1)
-        rules = await rule_manager.get_rules(account_id=1)
+        chat_id = update.effective_chat.id
+        logger.info(f"Processing /rules command from chat_id {chat_id}")
+        
+        # Get or create account for this chat
+        account = await db.get_or_create_temporary_account(chat_id)
+        account_id = account.get('id', 1)  # Default to 1 if not found
+        
+        # Get rules for this account
+        rules = await rule_manager.get_rules(account_id=account_id)
+        
+        # If no rules found, try to create default rules
+        if not rules:
+            logger.info(f"No rules found for account {account_id}. Creating default rules.")
+            success = await rule_manager.create_default_rules(account_id)
+            if success:
+                # Try to get rules again
+                rules = await rule_manager.get_rules(account_id=account_id)
+                logger.info(f"Created {len(rules)} default rules for account {account_id}")
+            else:
+                logger.error(f"Failed to create default rules for account {account_id}")
+        
+        # Format and send rules
         rules_text = rule_manager.get_formatted_rules(rules)
         await update.message.reply_text(rules_text)
     except Exception as e:
         logger.error(f"Error in rules_command: {e}", exc_info=True)
-        await update.message.reply_text("Error retrieving rules")
+        await update.message.reply_text("Error retrieving rules. Please try again later.")
 
 async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display current AI model information"""
@@ -466,10 +500,25 @@ async def get_chat_response(user_input: str, chat_id: int) -> str:
         
         # Get rules from rule manager
         try:
-            rules = await rule_manager.get_rules(account_id=1)
+            # Get account for this chat
+            account = await db.get_or_create_temporary_account(chat_id)
+            account_id = account.get('id', 1)  # Default to 1 if not found
+            
+            # Get rules for this account
+            rules = await rule_manager.get_rules(account_id=account_id)
+            
+            # If no rules found, try to create default rules
+            if not rules:
+                logger.info(f"No rules found for account {account_id}. Creating default rules.")
+                success = await rule_manager.create_default_rules(account_id)
+                if success:
+                    # Try to get rules again
+                    rules = await rule_manager.get_rules(account_id=account_id)
+                    logger.info(f"Created {len(rules)} default rules for account {account_id}")
+            
             formatted_rules = "Rules to follow:\n" + "\n".join(
                 [f"{i+1}. {rule.text}" for i, rule in enumerate(rules)]
-            )
+            ) if rules else "Rules to follow:\nBe helpful and respectful."
         except Exception as e:
             logger.error(f"Error getting rules: {e}")
             formatted_rules = "Rules to follow:\nBe helpful and respectful."

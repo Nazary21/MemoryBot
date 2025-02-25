@@ -56,24 +56,94 @@ class Database:
             try:
                 result = await self.supabase.table('bot_rules').select('count(*)', count='exact').limit(1).execute()
                 logger.info(f"bot_rules table exists, contains {result.count} rules")
-                return  # Tables already exist
+                # Even if table exists, we'll continue to make sure all tables are created
             except Exception as check_error:
                 logger.info(f"bot_rules table check failed, will create schema: {check_error}")
-                
+            
             # Create tables using raw SQL for more control
             try:
-                logger.info("Creating initial database schema...")
-                await self.supabase.postgrest.rpc('create_initial_schema').execute()
-                logger.info("Database schema created successfully")
-            except Exception as schema_error:
-                logger.error(f"Error creating schema via RPC: {schema_error}")
+                logger.info("Creating database tables if they don't exist...")
                 
-                # Try alternative approach - read SQL from file and execute
+                # Create bot_rules table
+                await self.supabase.rpc('execute_sql', {
+                    'query': """
+                    CREATE TABLE IF NOT EXISTS bot_rules (
+                        id SERIAL PRIMARY KEY,
+                        account_id INTEGER NOT NULL,
+                        rule_text TEXT NOT NULL,
+                        priority INTEGER DEFAULT 0,
+                        is_active BOOLEAN DEFAULT TRUE,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    );
+                    """
+                }).execute()
+                logger.info("bot_rules table created or verified")
+                
+                # Create accounts table if it doesn't exist
+                await self.supabase.rpc('execute_sql', {
+                    'query': """
+                    CREATE TABLE IF NOT EXISTS accounts (
+                        id SERIAL PRIMARY KEY,
+                        name TEXT,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    );
+                    """
+                }).execute()
+                logger.info("accounts table created or verified")
+                
+                # Create temporary_accounts table if it doesn't exist
+                await self.supabase.rpc('execute_sql', {
+                    'query': """
+                    CREATE TABLE IF NOT EXISTS temporary_accounts (
+                        id SERIAL PRIMARY KEY,
+                        telegram_chat_id BIGINT UNIQUE NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        expires_at TIMESTAMP WITH TIME ZONE
+                    );
+                    """
+                }).execute()
+                logger.info("temporary_accounts table created or verified")
+                
+                # Create chat_history table if it doesn't exist
+                await self.supabase.rpc('execute_sql', {
+                    'query': """
+                    CREATE TABLE IF NOT EXISTS chat_history (
+                        id SERIAL PRIMARY KEY,
+                        account_id INTEGER,
+                        telegram_chat_id BIGINT,
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        memory_type TEXT DEFAULT 'short_term',
+                        timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    );
+                    """
+                }).execute()
+                logger.info("chat_history table created or verified")
+                
+                logger.info("All database tables created or verified successfully")
+                
+                # Create default account if it doesn't exist (for backward compatibility)
+                try:
+                    account_result = await self.supabase.table('accounts').select('*').eq('id', 1).execute()
+                    if not account_result.data:
+                        logger.info("Creating default account (id=1)")
+                        await self.supabase.table('accounts').insert({'id': 1, 'name': 'Default Account'}).execute()
+                except Exception as account_error:
+                    logger.error(f"Error checking/creating default account: {account_error}")
+                
+            except Exception as schema_error:
+                logger.error(f"Error creating schema: {schema_error}")
+                
+                # Try alternative approach - direct SQL execution
                 try:
                     logger.info("Trying alternative schema creation approach...")
-                    # This is a placeholder - in a real implementation, you would
-                    # read the SQL file and execute it directly
-                    logger.warning("Alternative schema creation not implemented")
+                    # Create minimal bot_rules table for rules to work
+                    await self.supabase.postgrest.rpc('execute_sql', {
+                        'sql': "CREATE TABLE IF NOT EXISTS bot_rules (id SERIAL PRIMARY KEY, account_id INTEGER NOT NULL, rule_text TEXT NOT NULL, priority INTEGER DEFAULT 0, is_active BOOLEAN DEFAULT TRUE);"
+                    }).execute()
+                    logger.info("Alternative schema creation successful")
                 except Exception as alt_error:
                     logger.error(f"Alternative schema creation also failed: {alt_error}")
                 

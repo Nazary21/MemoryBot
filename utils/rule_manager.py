@@ -149,20 +149,59 @@ class RuleManager:
                 logger.error(f"Error checking/creating account: {account_error}")
                 # Continue anyway to try to create rules
             
+            # Check if rules already exist for this account
+            try:
+                existing_rules = await self.db.supabase.table('bot_rules').select('*').eq('account_id', account_id).execute()
+                if existing_rules.data and len(existing_rules.data) > 0:
+                    logger.info(f"Account {account_id} already has {len(existing_rules.data)} rules. Skipping default rule creation.")
+                    return True
+            except Exception as check_error:
+                logger.error(f"Error checking existing rules: {check_error}")
+                # Continue to create rules anyway
+            
             # Add default rules
             success_count = 0
             for rule in self.default_rules:
                 try:
-                    await self.add_rule(
-                        account_id=account_id,
-                        rule_text=rule["text"],
-                        priority=rule["priority"]
-                    )
-                    success_count += 1
+                    # Try direct insert first
+                    try:
+                        result = await self.db.supabase.table('bot_rules').insert({
+                            'account_id': account_id,
+                            'rule_text': rule["text"],
+                            'priority': rule["priority"],
+                            'is_active': True
+                        }).execute()
+                        
+                        if result.data:
+                            success_count += 1
+                            logger.info(f"Added rule: {rule['text']}")
+                        else:
+                            logger.warning(f"Failed to add rule: {rule['text']} - no data returned")
+                    except Exception as insert_error:
+                        logger.error(f"Error inserting rule '{rule['text']}': {insert_error}")
+                        
+                        # Try alternative approach with RPC
+                        try:
+                            await self.db.supabase.rpc('execute_sql', {
+                                'query': f"""
+                                INSERT INTO bot_rules (account_id, rule_text, priority, is_active)
+                                VALUES ({account_id}, '{rule['text'].replace("'", "''")}', {rule['priority']}, TRUE)
+                                """
+                            }).execute()
+                            success_count += 1
+                            logger.info(f"Added rule via SQL: {rule['text']}")
+                        except Exception as sql_error:
+                            logger.error(f"Error adding rule via SQL: {sql_error}")
                 except Exception as rule_error:
                     logger.error(f"Error adding rule '{rule['text']}': {rule_error}")
                 
             logger.info(f"Default rules created for account {account_id}: {success_count}/{len(self.default_rules)} successful")
+            
+            # If no rules were added successfully, use fallback
+            if success_count == 0:
+                logger.warning(f"No rules were added successfully for account {account_id}. Using fallback.")
+                return self._create_default_rules_fallback(account_id)
+                
             return success_count > 0
         except Exception as e:
             logger.error(f"Error creating default rules: {e}")
