@@ -397,19 +397,41 @@ application = (ApplicationBuilder()
               .concurrent_updates(True)
               .build())
 
-# Message handler
+# Add after other logging setup
+def debug_log(chat_id: int, stage: str, details: str = None):
+    """Temporary debug logging function for message handler troubleshooting"""
+    message = f"[DEBUG][Chat {chat_id}] {stage}"
+    if details:
+        message += f": {details}"
+    logger.debug(message)
+
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming messages with hybrid memory support"""
     try:
         chat_id = update.effective_chat.id
-        user_input = update.message.text
+        debug_log(chat_id, "Message received", f"From user: {update.effective_user.username}")
+        original_text = update.message.text
+        debug_log(chat_id, "Original text", original_text)
+        
+        # Extract message content, removing bot mention if present
+        user_input = original_text
+        if f"@{context.bot.username}" in original_text:
+            user_input = original_text.replace(f"@{context.bot.username}", "").strip()
+            debug_log(chat_id, "Mention removed", f"Cleaned text: {user_input}")
+        
+        if not user_input:  # If message is empty after cleaning
+            debug_log(chat_id, "Empty message", "Skipping processing")
+            return
         
         # Get or create memory manager for this chat
+        debug_log(chat_id, "Getting memory manager")
         memory_manager = await get_memory_manager(chat_id)
         
         try:
             # Get conversation context from memory (works in both normal and fallback mode)
+            debug_log(chat_id, "Fetching memory")
             short_term_memory = await memory_manager.get_memory(chat_id, 'short_term')
+            debug_log(chat_id, "Memory fetched", f"Context size: {len(short_term_memory)}")
             
             # Prepare messages for AI
             messages = [
@@ -425,8 +447,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Add current user message
             messages.append({"role": "user", "content": user_input})
+            debug_log(chat_id, "Messages prepared", f"Total messages: {len(messages)}")
             
             # Get AI response
+            debug_log(chat_id, "Calling OpenAI")
             client = OpenAI(api_key=OPENAI_API_KEY)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -434,18 +458,24 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             
             response_text = response.choices[0].message.content
+            debug_log(chat_id, "Got AI response", f"Length: {len(response_text)}")
             
             # Store both user message and response in memory
+            debug_log(chat_id, "Storing messages")
             await memory_manager.add_message(chat_id, "user", user_input)
             await memory_manager.add_message(chat_id, "assistant", response_text)
             
             # Send response to user
+            debug_log(chat_id, "Sending response")
             await context.bot.send_message(chat_id=chat_id, text=response_text)
+            debug_log(chat_id, "Response sent successfully")
             
         except Exception as e:
             logger.error(f"Error in message processing: {e}")
+            debug_log(chat_id, "Processing error", str(e))
             # Attempt basic fallback without context
             try:
+                debug_log(chat_id, "Attempting fallback")
                 response = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
@@ -454,24 +484,28 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ]
                 )
                 response_text = response.choices[0].message.content
+                debug_log(chat_id, "Fallback successful")
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text=response_text
                 )
             except Exception as final_error:
                 logger.error(f"Final fallback also failed: {final_error}")
+                debug_log(chat_id, "Fallback failed", str(final_error))
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text="I apologize, but I encountered an error. Please try again later."
                 )
     except Exception as e:
         logger.error(f"Critical error in message handler: {e}")
+        debug_log(chat_id, "Critical error", str(e))
         try:
             await context.bot.send_message(
                 chat_id=chat_id,
                 text="I encountered a critical error. Please try again later."
             )
         except:
+            debug_log(chat_id, "Failed to send error message")
             pass  # If we can't even send error message, just log and continue
 
 async def get_memory_manager(chat_id: int) -> HybridMemoryManager:
@@ -621,7 +655,11 @@ try:
     application.add_handler(CommandHandler("historycontext", history_context_command))
     application.add_handler(CommandHandler("rules", rules_command))
     application.add_handler(CommandHandler("model", model_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    # Update message handler to use Mention filter or reply filter
+    application.add_handler(MessageHandler(
+        (filters.TEXT & ~filters.COMMAND & (filters.Mention | filters.REPLY)),
+        message_handler
+    ))
     logger.info("Handlers added successfully")
 except Exception as e:
     logger.error(f"Error adding handlers: {e}", exc_info=True)
