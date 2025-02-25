@@ -147,9 +147,8 @@ def get_memory_stats() -> Dict[str, int]:
 def get_recent_messages(limit: int = 5) -> List[Dict]:
     """Get recent messages"""
     try:
-        with open('memory/short_term.json', 'r') as f:
-            messages = json.load(f)
-        return messages[-limit:]
+        # Use the memory manager instance we already have
+        return memory_manager.get_recent_messages(limit)
     except Exception as e:
         logger.error(f"Error getting recent messages: {e}")
         return []
@@ -202,6 +201,10 @@ async def dashboard(request: Request, auth_info: dict = Depends(verify_credentia
         # Get current AI provider info
         provider_info = ai_manager.get_provider()
 
+        # Get current AI settings
+        ai_handler = AIResponseHandler(db)
+        current_settings = await ai_handler.get_account_model_settings(account_id=1)
+
         return templates.TemplateResponse(
             "dashboard.html",
             {
@@ -222,7 +225,9 @@ async def dashboard(request: Request, auth_info: dict = Depends(verify_credentia
                 "active_provider": ai_manager.get_active_provider(),
                 "provider_info": provider_info,
                 "username": auth_info["username"],
-                "using_default_auth": auth_info["using_defaults"]
+                "using_default_auth": auth_info["using_defaults"],
+                "current_settings": current_settings,
+                "available_models": ai_handler.get_available_models()
             }
         )
     except Exception as e:
@@ -247,13 +252,28 @@ async def set_provider(provider: str = Form(...), username: str = Depends(verify
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/update_config")
-async def update_config(api_key: str = Form(...), username: str = Depends(verify_credentials)):
-    """Update provider API key"""
+async def update_config(
+    api_key: str = Form(...),
+    temperature: float = Form(0.7),
+    max_tokens: int = Form(2000),
+    username: str = Depends(verify_credentials)
+):
+    """Update provider API key and AI settings"""
     try:
+        # Update provider config
         provider = ai_manager.get_active_provider()
-        if ai_manager.update_provider_config(provider, api_key):
-            return RedirectResponse(url="/dashboard", status_code=303)
-        raise HTTPException(status_code=400, detail="Failed to update configuration")
+        if not ai_manager.update_provider_config(provider, api_key):
+            raise HTTPException(status_code=400, detail="Failed to update configuration")
+
+        # Update AI settings
+        ai_handler = AIResponseHandler(db)
+        settings = {
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+        await ai_handler.update_model_settings(account_id=1, settings=settings)
+
+        return RedirectResponse(url="/dashboard", status_code=303)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
