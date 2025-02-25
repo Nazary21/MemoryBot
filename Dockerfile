@@ -12,5 +12,5 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . .
 
-# Use the Python startup script
-CMD ["python", "start.py"] 
+# Use shell form of CMD to allow environment variable substitution
+CMD uvicorn bot:app --host 0.0.0.0 --port ${PORT:-8000} 
