@@ -10,9 +10,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements_filtered.txt && \
     pip install --no-cache-dir supabase==2.12.0 --no-deps
 
-# Copy the entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Copy the Python startup script first
+COPY start.py .
 
 # Copy the rest of the application
 COPY . .
@@ -21,5 +20,5 @@ COPY . .
 # Note: This is just a fallback, Railway should provide the actual PORT value
 ENV PORT=8000
 
-# Use direct shell command with hardcoded port
-CMD ["sh", "-c", "echo 'Starting uvicorn with hardcoded port 8000' && uvicorn bot:app --host 0.0.0.0 --port 8000"]
+# Use Python script to start the application
+CMD ["python", "start.py"]
