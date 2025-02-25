@@ -15,5 +15,6 @@ COPY . .
 # Set a default PORT environment variable
 ENV PORT=8000
 
-# Use the existing start.py script that properly handles the PORT environment variable
-CMD ["python", "start.py"] 
+# Use shell form of CMD to allow environment variable substitution
+# This directly executes uvicorn with the PORT variable
+CMD uvicorn bot:app --host 0.0.0.0 --port $PORT 
