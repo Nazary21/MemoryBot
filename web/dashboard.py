@@ -158,16 +158,17 @@ async def check_database_status() -> Dict[str, bool | str]:
     """Check database connection status"""
     try:
         if not db.initialized:
-            return {"status": False, "message": "Supabase client not initialized"}
+            return {"status": False, "message": "Operating in file-based fallback mode", "fallback": True}
             
         # Try a simple query to test connection
         try:
             result = await db.supabase.table('accounts').select('count(*)', count='exact').limit(1).execute()
-            return {"status": True, "message": f"Connected, found {result.count} accounts"}
+            return {"status": True, "message": f"Connected, found {result.count} accounts", "fallback": False}
         except Exception as e:
-            return {"status": False, "message": f"Connection error: {str(e)}"}
+            db.fallback_mode = True
+            return {"status": False, "message": f"Connection error: {str(e)}", "fallback": True}
     except Exception as e:
-        return {"status": False, "message": f"Error: {str(e)}"}
+        return {"status": False, "message": f"Error: {str(e)}", "fallback": True}
 
 @router.get("/", response_class=HTMLResponse)
 @router.get("", response_class=HTMLResponse)
@@ -211,6 +212,7 @@ async def dashboard(request: Request, auth_info: dict = Depends(verify_credentia
                 "openai_status_message": openai_status["message"],
                 "database_status": database_status["status"],
                 "database_status_message": database_status["message"],
+                "fallback_mode": database_status.get("fallback", False),
                 "message_count": memory_stats["message_count"],
                 "context_count": memory_stats["context_count"],
                 "recent_messages": get_recent_messages(),

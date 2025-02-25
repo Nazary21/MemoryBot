@@ -13,10 +13,13 @@ class Database:
     def __init__(self):
         self.supabase = init_supabase()
         self.initialized = self.supabase is not None
+        self.fallback_mode = not self.initialized
+        
         if not self.initialized:
-            logger.error("Failed to initialize Supabase client. Database operations will not work.")
-            logger.info("Setting up file-based fallback mode")
+            logger.warning("⚠️ FALLBACK MODE ACTIVE: Database operations will use file-based storage")
             self.setup_file_fallback()
+        else:
+            logger.info("✅ Database connection successful")
     
     def setup_file_fallback(self):
         """Set up file-based fallback storage"""
@@ -39,15 +42,15 @@ class Database:
                     with open(file_path, 'w') as f:
                         json.dump([], f)
                         
-            logger.info("File-based fallback mode set up successfully")
+            logger.info("✅ File-based fallback mode set up successfully")
         except Exception as e:
-            logger.error(f"Error setting up file-based fallback: {e}")
+            logger.error(f"❌ Error setting up file-based fallback: {e}")
         
     async def setup_tables(self):
         """Initialize database tables"""
         try:
             if not self.initialized:
-                logger.error("Cannot set up tables: Supabase client is not initialized")
+                logger.warning("⚠️ Cannot set up tables: Operating in fallback mode")
                 return
                 
             logger.info("Setting up database tables...")
@@ -122,7 +125,7 @@ class Database:
                 }).execute()
                 logger.info("chat_history table created or verified")
                 
-                logger.info("All database tables created or verified successfully")
+                logger.info("✅ All database tables created or verified successfully")
                 
                 # Create default account if it doesn't exist (for backward compatibility)
                 try:
@@ -146,16 +149,23 @@ class Database:
                     logger.info("Alternative schema creation successful")
                 except Exception as alt_error:
                     logger.error(f"Alternative schema creation also failed: {alt_error}")
+                    logger.warning("⚠️ Switching to fallback mode due to schema creation failure")
+                    self.initialized = False
+                    self.fallback_mode = True
+                    self.setup_file_fallback()
                 
         except Exception as e:
             logger.error(f"Error setting up tables: {e}")
-            # Don't raise the exception to allow the application to continue
+            logger.warning("⚠️ Switching to fallback mode due to table setup failure")
+            self.initialized = False
+            self.fallback_mode = True
+            self.setup_file_fallback()
 
     async def get_or_create_temporary_account(self, chat_id: int) -> Dict:
         """Get or create a temporary account for a chat"""
         try:
             if not self.initialized:
-                logger.warning("Using file-based fallback for temporary account")
+                logger.debug("Using file-based fallback for temporary account")
                 return self._get_or_create_temporary_account_fallback(chat_id)
                 
             # Check for existing temporary account
@@ -670,4 +680,8 @@ class Database:
                 'timestamp': datetime.now().isoformat()
             }).execute()
         except Exception as e:
-            logger.error(f"Error tracking usage: {e}") 
+            logger.error(f"Error tracking usage: {e}")
+
+    def is_in_fallback_mode(self) -> bool:
+        """Check if database is operating in fallback mode"""
+        return self.fallback_mode 
