@@ -16,8 +16,8 @@ def init_supabase():
     try:
         logging.info(f"Initializing Supabase client with URL: {SUPABASE_URL[:10]}...")
         
-        # Use the simplest form of initialization with positional arguments
-        # This is compatible with Supabase client version 2.3.1
+        # Use the simplest form of initialization with positional arguments only
+        # This is compatible with all versions of Supabase client
         # Avoid using any options or keyword arguments that might cause issues
         client = create_client(SUPABASE_URL, SUPABASE_KEY)
         
