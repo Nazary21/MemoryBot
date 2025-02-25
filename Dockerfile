@@ -12,5 +12,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . .
 
-# Use shell form to allow environment variable substitution
-CMD uvicorn bot:app --host 0.0.0.0 --port ${PORT:-8000} 
+# Make the startup script executable
+RUN chmod +x start.sh
+
+# Use the startup script
+CMD ["./start.sh"] 
