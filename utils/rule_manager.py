@@ -59,8 +59,8 @@ class RuleManager:
             # Check if Supabase client is initialized
             if self.db.supabase is None:
                 logger.error("Cannot get rules: Supabase client is not initialized")
-                # Return empty list to avoid errors
-                return []
+                # Use file-based fallback
+                return self._get_rules_fallback(account_id)
                 
             result = await self.db.supabase.table('bot_rules').select(
                 '*'
@@ -83,35 +83,128 @@ class RuleManager:
             ) for rule in result.data]
         except Exception as e:
             logger.error(f"Error getting rules: {e}")
-            return []
+            # Use file-based fallback
+            return self._get_rules_fallback(account_id)
+        
+    def _get_rules_fallback(self, account_id: int) -> List[Rule]:
+        """Fallback method to get rules using file storage"""
+        try:
+            # Create memory directory if it doesn't exist
+            memory_dir = "memory"
+            os.makedirs(memory_dir, exist_ok=True)
+            
+            # Create rules file if it doesn't exist
+            rules_file = os.path.join(memory_dir, "bot_rules.json")
+            
+            # Check if file exists
+            if not os.path.exists(rules_file):
+                # Create default rules
+                self._create_default_rules_fallback(account_id)
+            
+            # Load rules
+            with open(rules_file, 'r') as f:
+                try:
+                    all_rules = json.load(f)
+                except json.JSONDecodeError:
+                    all_rules = []
+            
+            # Filter rules for this account
+            account_rules = [
+                rule for rule in all_rules 
+                if rule.get('account_id') == account_id and rule.get('is_active', True)
+            ]
+            
+            # Sort by priority
+            account_rules.sort(key=lambda x: x.get('priority', 0), reverse=True)
+            
+            # Convert to Rule objects
+            return [Rule(
+                text=rule.get('rule_text', ''),
+                priority=rule.get('priority', 0),
+                is_active=True
+            ) for rule in account_rules]
+        except Exception as e:
+            logger.error(f"Error in fallback rules retrieval: {e}")
+            # Return default rules directly as a last resort
+            return [Rule(text=rule["text"], priority=rule["priority"]) 
+                    for rule in self.default_rules]
 
     async def create_default_rules(self, account_id: int) -> bool:
         """Create default rules for a new account"""
         try:
             if self.db.supabase is None:
                 logger.error("Cannot create default rules: Supabase client is not initialized")
-                return False
+                logger.info("Using file-based fallback for default rules")
+                return self._create_default_rules_fallback(account_id)
                 
             # Check if account exists
-            account_result = await self.db.supabase.table('accounts').select('*').eq('id', account_id).execute()
-            
-            # If account doesn't exist, create it
-            if not account_result.data:
-                logger.info(f"Account {account_id} doesn't exist. Creating it.")
-                await self.db.supabase.table('accounts').insert({'id': account_id, 'name': f'Account {account_id}'}).execute()
+            try:
+                account_result = await self.db.supabase.table('accounts').select('*').eq('id', account_id).execute()
+                
+                # If account doesn't exist, create it
+                if not account_result.data:
+                    logger.info(f"Account {account_id} doesn't exist. Creating it.")
+                    await self.db.supabase.table('accounts').insert({'id': account_id, 'name': f'Account {account_id}'}).execute()
+            except Exception as account_error:
+                logger.error(f"Error checking/creating account: {account_error}")
+                # Continue anyway to try to create rules
             
             # Add default rules
+            success_count = 0
             for rule in self.default_rules:
-                await self.add_rule(
-                    account_id=account_id,
-                    rule_text=rule["text"],
-                    priority=rule["priority"]
-                )
+                try:
+                    await self.add_rule(
+                        account_id=account_id,
+                        rule_text=rule["text"],
+                        priority=rule["priority"]
+                    )
+                    success_count += 1
+                except Exception as rule_error:
+                    logger.error(f"Error adding rule '{rule['text']}': {rule_error}")
                 
-            logger.info(f"Default rules created for account {account_id}")
-            return True
+            logger.info(f"Default rules created for account {account_id}: {success_count}/{len(self.default_rules)} successful")
+            return success_count > 0
         except Exception as e:
             logger.error(f"Error creating default rules: {e}")
+            return self._create_default_rules_fallback(account_id)
+        
+    def _create_default_rules_fallback(self, account_id: int) -> bool:
+        """Fallback method to create default rules using file storage"""
+        try:
+            # Create memory directory if it doesn't exist
+            memory_dir = "memory"
+            os.makedirs(memory_dir, exist_ok=True)
+            
+            # Create rules file if it doesn't exist
+            rules_file = os.path.join(memory_dir, "bot_rules.json")
+            
+            # Load existing rules
+            rules = []
+            if os.path.exists(rules_file):
+                with open(rules_file, 'r') as f:
+                    try:
+                        rules = json.load(f)
+                    except json.JSONDecodeError:
+                        rules = []
+            
+            # Add default rules for this account
+            for rule in self.default_rules:
+                rules.append({
+                    'account_id': account_id,
+                    'rule_text': rule["text"],
+                    'priority': rule["priority"],
+                    'is_active': True,
+                    'created_at': datetime.now().isoformat()
+                })
+            
+            # Save updated rules
+            with open(rules_file, 'w') as f:
+                json.dump(rules, f)
+            
+            logger.info(f"Default rules created in file storage for account {account_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error in fallback default rules creation: {e}")
             return False
 
     # For backward compatibility with old code

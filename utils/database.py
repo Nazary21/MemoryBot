@@ -50,11 +50,36 @@ class Database:
                 logger.error("Cannot set up tables: Supabase client is not initialized")
                 return
                 
+            logger.info("Setting up database tables...")
+            
+            # Try to check if the bot_rules table exists
+            try:
+                result = await self.supabase.table('bot_rules').select('count(*)', count='exact').limit(1).execute()
+                logger.info(f"bot_rules table exists, contains {result.count} rules")
+                return  # Tables already exist
+            except Exception as check_error:
+                logger.info(f"bot_rules table check failed, will create schema: {check_error}")
+                
             # Create tables using raw SQL for more control
-            await self.supabase.postgrest.rpc('create_initial_schema').execute()
+            try:
+                logger.info("Creating initial database schema...")
+                await self.supabase.postgrest.rpc('create_initial_schema').execute()
+                logger.info("Database schema created successfully")
+            except Exception as schema_error:
+                logger.error(f"Error creating schema via RPC: {schema_error}")
+                
+                # Try alternative approach - read SQL from file and execute
+                try:
+                    logger.info("Trying alternative schema creation approach...")
+                    # This is a placeholder - in a real implementation, you would
+                    # read the SQL file and execute it directly
+                    logger.warning("Alternative schema creation not implemented")
+                except Exception as alt_error:
+                    logger.error(f"Alternative schema creation also failed: {alt_error}")
+                
         except Exception as e:
             logger.error(f"Error setting up tables: {e}")
-            raise
+            # Don't raise the exception to allow the application to continue
 
     async def get_or_create_temporary_account(self, chat_id: int) -> Dict:
         """Get or create a temporary account for a chat"""

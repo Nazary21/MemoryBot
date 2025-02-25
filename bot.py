@@ -76,6 +76,10 @@ async def startup_event():
         logger.info("Initializing memory files...")
         init_memory_files()
         
+        # Initialize database tables
+        logger.info("Setting up database tables...")
+        await db.setup_tables()
+        
         # Initialize application
         logger.info("Running application initialization...")
         init_success = await init_application()
