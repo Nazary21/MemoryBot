@@ -36,22 +36,22 @@ def init_supabase():
         try:
             supabase_version = importlib.metadata.version('supabase')
             logger.info(f"Detected supabase version: {supabase_version}")
+            
+            # Warn if using version with known issues
+            if supabase_version == "2.13.0":
+                logger.warning("Supabase version 2.13.0 has known initialization issues. Version 2.12.0 is recommended.")
         except importlib.metadata.PackageNotFoundError:
-            logger.error("Supabase package is not installed. Please install it with: pip install supabase==2.13.0")
+            logger.error("Supabase package is not installed. Please install it with: pip install supabase==2.12.0")
             return None
         
         # Initialize Supabase client
         try:
             from supabase import create_client
             
-            # Create client with only the required parameters
-            # Using named parameters to avoid any potential issues
-            client = create_client(
-                supabase_url=SUPABASE_URL,
-                supabase_key=SUPABASE_KEY
-            )
+            # Simple initialization with just the required parameters
+            client = create_client(SUPABASE_URL, SUPABASE_KEY)
             
-            logger.info("Supabase client initialized successfully with create_client")
+            logger.info("Supabase client initialized successfully")
             
             # Test connection
             try:
