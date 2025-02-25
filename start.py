@@ -1,6 +1,7 @@
 import os
 import sys
 import uvicorn
+import importlib.util
 
 # Print debugging information
 print("============ PYTHON ENVIRONMENT INFO ============")
@@ -46,4 +47,30 @@ print(f"Starting uvicorn with host='0.0.0.0', port={port}")
 
 # Start the application
 if __name__ == "__main__":
-    uvicorn.run("bot:app", host="0.0.0.0", port=port)
+    try:
+        # Import the app directly instead of using string reference
+        print("Attempting to import bot module...")
+        
+        # Check if bot.py exists
+        if not os.path.exists('bot.py'):
+            print("ERROR: bot.py not found in current directory!")
+            print(f"Files in directory: {os.listdir('.')}")
+            sys.exit(1)
+            
+        # Import the app using importlib
+        spec = importlib.util.spec_from_file_location("bot", "bot.py")
+        bot_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bot_module)
+        
+        # Get the app from the module
+        app = bot_module.app
+        print("Successfully imported bot.app")
+        
+        # Run using uvicorn's run function with the app object directly
+        print(f"Starting uvicorn with app object directly on port {port}")
+        uvicorn.run(app, host="0.0.0.0", port=port)
+    except Exception as e:
+        print(f"ERROR starting application: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
