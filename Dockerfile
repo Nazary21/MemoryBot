@@ -21,5 +21,5 @@ COPY . .
 # Note: This is just a fallback, Railway should provide the actual PORT value
 ENV PORT=8000
 
-# Force shell expansion by using sh -c
-ENTRYPOINT ["sh", "-c", "/entrypoint.sh"]
+# Use direct shell command with hardcoded port
+CMD ["sh", "-c", "echo 'Starting uvicorn with hardcoded port 8000' && uvicorn bot:app --host 0.0.0.0 --port 8000"]

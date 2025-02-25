@@ -37,4 +37,5 @@ echo "Starting Uvicorn on PORT=$PORT"
 # Using exec to replace the shell process with uvicorn
 # This ensures signals are properly passed to the application
 echo "============ STARTING UVICORN ============"
-exec uvicorn bot:app --host 0.0.0.0 --port $PORT 
+echo "Using hardcoded port 8000 instead of environment variable"
+exec uvicorn bot:app --host 0.0.0.0 --port 8000 
