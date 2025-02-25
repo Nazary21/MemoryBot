@@ -127,11 +127,11 @@
                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" readonly>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">Temperature (0-1)</label>
+                        <label class="block text-sm font-medium text-gray-700">Temperature (0-2)</label>
                         <input type="number" name="temperature" value="{{ current_settings.temperature }}" 
-                               min="0" max="1" step="0.1"
+                               min="0" max="2" step="0.1"
                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                        <p class="mt-1 text-sm text-gray-500">Higher values make output more random, lower values make it more focused.</p>
+                        <p class="mt-1 text-sm text-gray-500">Higher values (up to 2.0) make output more random and creative, lower values make it more focused and deterministic.</p>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Max Tokens (100-3000)</label>

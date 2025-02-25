@@ -16,7 +16,7 @@ class AIResponseHandler:
         self.db = db
         self.default_model = "gpt-3.5-turbo"
         self.default_settings = {
-            "temperature": 0.7,
+            "temperature": 1.0,
             "max_tokens": 2000
         }
 

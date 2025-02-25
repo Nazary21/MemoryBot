@@ -121,4 +121,22 @@ class AIProviderManager:
 
     def get_active_provider(self) -> str:
         """Get currently active provider"""
-        return self.config["active_provider"] 
+        return self.config["active_provider"]
+
+    def update_provider_config(self, provider: str, api_key: str) -> bool:
+        """Update provider configuration"""
+        try:
+            if provider not in self.config["providers"]:
+                logger.error(f"Invalid provider: {provider}")
+                return False
+                
+            # Update environment variable
+            os.environ[f"{provider.upper()}_API_KEY"] = api_key
+            
+            # Update provider config
+            self.config["providers"][provider]["api_key"] = api_key
+            logger.info(f"Updated {provider} configuration")
+            return True
+        except Exception as e:
+            logger.error(f"Error updating provider config: {e}")
+            return False 

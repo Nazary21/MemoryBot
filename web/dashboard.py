@@ -474,8 +474,8 @@ async def update_model_settings(
     """Update AI model settings"""
     try:
         # Validate inputs
-        if not (0 <= temperature <= 1):
-            raise HTTPException(status_code=400, detail="Temperature must be between 0 and 1")
+        if not (0 <= temperature <= 2):
+            raise HTTPException(status_code=400, detail="Temperature must be between 0 and 2")
             
         if not (100 <= max_tokens <= 3000):
             raise HTTPException(status_code=400, detail="Max tokens must be between 100 and 3000")
