@@ -80,3 +80,21 @@ We created a test script (`test_supabase.py`) to verify that Supabase initializa
 2. Consider pinning all dependency versions in requirements.txt to avoid future conflicts.
 
 3. If upgrading Supabase in the future, test initialization thoroughly before deploying.
+
+## Final Solution
+
+After testing various combinations, we settled on the following configuration:
+
+1. `httpx==0.26.0` - This version is compatible with both `supabase==2.12.0` and `python-telegram-bot==20.7`
+2. `supabase==2.12.0` - This version avoids the initialization issues with the proxy parameter seen in 2.13.0
+3. `python-telegram-bot==20.7` - The latest version at the time of writing
+
+This configuration ensures that all packages work together without conflicts. We also specified Python 3.11.11 in the runtime.txt file to ensure compatibility with Railway deployment.
+
+## Deployment Considerations
+
+When deploying to Railway, we found that:
+
+1. Explicitly specifying Python 3.11.11 in runtime.txt helps ensure the correct Python version is used
+2. The dependency resolution during deployment is more strict than local development
+3. Testing the application locally with the exact same Python version as the deployment environment helps catch compatibility issues early
