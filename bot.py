@@ -449,15 +449,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             messages.append({"role": "user", "content": user_input})
             debug_log(chat_id, "Messages prepared", f"Total messages: {len(messages)}")
             
-            # Get AI response
-            debug_log(chat_id, "Calling OpenAI")
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=messages
-            )
-            
-            response_text = response.choices[0].message.content
+            # Get AI response using AIResponseHandler
+            debug_log(chat_id, "Getting AI response")
+            response_text = await ai_handler.get_chat_response(account_id=1, messages=messages)
             debug_log(chat_id, "Got AI response", f"Length: {len(response_text)}")
             
             # Store both user message and response in memory
@@ -476,14 +470,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Attempt basic fallback without context
             try:
                 debug_log(chat_id, "Attempting fallback")
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant. Be concise and friendly."},
-                        {"role": "user", "content": user_input}
-                    ]
-                )
-                response_text = response.choices[0].message.content
+                response_text = await ai_handler.get_chat_response(account_id=1, messages=[
+                    {"role": "system", "content": "You are a helpful assistant. Be concise and friendly."},
+                    {"role": "user", "content": user_input}
+                ])
                 debug_log(chat_id, "Fallback successful")
                 await context.bot.send_message(
                     chat_id=chat_id,
