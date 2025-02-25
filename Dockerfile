@@ -12,5 +12,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . .
 
+# Set a default PORT environment variable
+ENV PORT=8000
+
 # Use the existing start.py script that properly handles the PORT environment variable
 CMD ["python", "start.py"] 
