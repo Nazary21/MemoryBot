@@ -407,14 +407,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Get or create memory manager for this chat
         memory_manager = await get_memory_manager(chat_id)
         
-        # Check if Supabase is available
-        if not db.supabase:
-            logger.warning("Supabase client is not initialized. Using fallback mode.")
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="I'm currently operating in limited mode due to a database connection issue. Basic functionality is available."
-            )
-        
         try:
             # Get conversation context from memory (works in both normal and fallback mode)
             short_term_memory = await memory_manager.get_memory(chat_id, 'short_term')
@@ -452,7 +444,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         except Exception as e:
             logger.error(f"Error in message processing: {e}")
-            # Attempt super basic fallback if everything else fails
+            # Attempt basic fallback without context
             try:
                 response = client.chat.completions.create(
                     model="gpt-3.5-turbo",
@@ -464,7 +456,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 response_text = response.choices[0].message.content
                 await context.bot.send_message(
                     chat_id=chat_id,
-                    text=response_text + "\n\nNote: I encountered an error accessing my memory system."
+                    text=response_text
                 )
             except Exception as final_error:
                 logger.error(f"Final fallback also failed: {final_error}")
@@ -485,15 +477,21 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_memory_manager(chat_id: int) -> HybridMemoryManager:
     """Get or create a memory manager for a chat"""
     try:
-        # Initialize database connection
+        # Initialize database connection if not already initialized
         if not hasattr(get_memory_manager, '_db'):
             get_memory_manager._db = Database()
             
-        # Create hybrid memory manager
+            # Log the mode we're operating in
+            if get_memory_manager._db.fallback_mode:
+                logger.info("Operating in file-based fallback mode")
+            else:
+                logger.info("Operating with Supabase database")
+        
+        # Create hybrid memory manager (will work in both normal and fallback mode)
         return HybridMemoryManager(get_memory_manager._db)
     except Exception as e:
         logger.error(f"Error creating memory manager: {e}")
-        # Return a new instance anyway - it will work in fallback mode
+        # Create a new Database instance that will automatically use fallback mode
         return HybridMemoryManager(Database())
 
 # Test endpoint for OpenAI
