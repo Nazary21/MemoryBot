@@ -646,8 +646,8 @@ class MultiTenantBot:
             )
         return self.memory_managers[chat_id]
 
-    async def handle_message(self, message: types.Message):
-        chat_id = message.chat.id
+    async def handle_message(self, message: Update):
+        chat_id = message.effective_chat.id
         memory_manager = await self.get_memory_manager(chat_id)
         
         # Get account-specific settings
@@ -659,14 +659,14 @@ class MultiTenantBot:
         # Process message with account context
         # ... rest of your message handling logic ...
 
-    async def handle_shopping_list(self, message: types.Message):
-        chat_id = message.chat.id
+    async def handle_shopping_list(self, message: Update):
+        chat_id = message.effective_chat.id
         memory_manager = await self.get_memory_manager(chat_id)
         
         # Natural language processing to detect shopping list intent
-        if "add to grocery list" in message.text.lower():
+        if "add to grocery list" in message.message.text.lower():
             # Extract item from message
-            item = extract_item(message.text)
+            item = extract_item(message.message.text)
             
             # Get or create default shopping list
             shopping_list = await self.db.fetch_one(
@@ -695,4 +695,4 @@ class MultiTenantBot:
                 shopping_list['id'], item
             )
             
-            await message.reply(f"Added {item} to your shopping list!")
+            await message.message.reply(f"Added {item} to your shopping list!")
