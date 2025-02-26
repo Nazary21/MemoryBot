@@ -92,11 +92,11 @@ class RuleManager:
     def _get_rules_fallback(self, account_id: int) -> List[Rule]:
         """Fallback method to get rules using file storage"""
         try:
-            # Create memory directory if it doesn't exist
-            memory_dir = "memory"
+            # Use account-specific directory like memory manager
+            memory_dir = f"memory/account_{account_id}"
             os.makedirs(memory_dir, exist_ok=True)
             
-            # Create rules file if it doesn't exist
+            # Store rules in account directory
             rules_file = os.path.join(memory_dir, "bot_rules.json")
             
             # Check if file exists
@@ -111,11 +111,8 @@ class RuleManager:
                 except json.JSONDecodeError:
                     all_rules = []
             
-            # Filter rules for this account
-            account_rules = [
-                rule for rule in all_rules 
-                if rule.get('account_id') == account_id and rule.get('is_active', True)
-            ]
+            # No need to filter by account_id since we're in account directory
+            account_rules = all_rules
             
             # Sort by priority
             account_rules.sort(key=lambda x: x.get('priority', 0), reverse=True)
@@ -124,7 +121,8 @@ class RuleManager:
             return [Rule(
                 text=rule.get('rule_text', ''),
                 priority=rule.get('priority', 0),
-                is_active=True
+                is_active=True,
+                category=rule.get('category', 'General')
             ) for rule in account_rules]
         except Exception as e:
             logger.error(f"Error in fallback rules retrieval: {e}")
@@ -213,14 +211,14 @@ class RuleManager:
     def _create_default_rules_fallback(self, account_id: int) -> bool:
         """Fallback method to create default rules using file storage"""
         try:
-            # Create memory directory if it doesn't exist
-            memory_dir = "memory"
+            # Use account-specific directory like memory manager
+            memory_dir = f"memory/account_{account_id}"
             os.makedirs(memory_dir, exist_ok=True)
             
-            # Create rules file if it doesn't exist
+            # Store rules in account directory
             rules_file = os.path.join(memory_dir, "bot_rules.json")
             
-            # Load existing rules
+            # Load existing rules if any
             rules = []
             if os.path.exists(rules_file):
                 with open(rules_file, 'r') as f:
@@ -229,19 +227,19 @@ class RuleManager:
                     except json.JSONDecodeError:
                         rules = []
             
-            # Add default rules for this account
+            # Add default rules (no need to include account_id in each rule)
             for rule in self.default_rules:
                 rules.append({
-                    'account_id': account_id,
                     'rule_text': rule["text"],
                     'priority': rule["priority"],
                     'is_active': True,
+                    'category': rule.get("category", "General"),
                     'created_at': datetime.now().isoformat()
                 })
             
             # Save updated rules
             with open(rules_file, 'w') as f:
-                json.dump(rules, f)
+                json.dump(rules, f, indent=2)
             
             logger.info(f"Default rules created in file storage for account {account_id}")
             return True
@@ -355,15 +353,13 @@ class RuleManager:
             return self._add_rule_fallback(account_id, rule_text, category, priority)
     
     def _add_rule_fallback(self, account_id: int, rule_text: str, category: str, priority: int) -> Optional[Rule]:
-        """Fallback method to add a rule using file storage"""
+        """Fallback method to add rule using file storage"""
         try:
-            logger.info(f"Using file-based fallback to add rule: {rule_text}")
-            
-            # Create memory directory if it doesn't exist
-            memory_dir = "memory"
+            # Use account-specific directory like memory manager
+            memory_dir = f"memory/account_{account_id}"
             os.makedirs(memory_dir, exist_ok=True)
             
-            # Create rules file if it doesn't exist
+            # Store rules in account directory
             rules_file = os.path.join(memory_dir, "bot_rules.json")
             
             # Load existing rules
@@ -375,24 +371,31 @@ class RuleManager:
                     except json.JSONDecodeError:
                         rules = []
             
-            # Add new rule
+            # Create new rule
             new_rule = {
-                'account_id': account_id,
                 'rule_text': rule_text,
-                'category': category,
                 'priority': priority,
                 'is_active': True,
+                'category': category,
                 'created_at': datetime.now().isoformat()
             }
             
+            # Add to rules list
             rules.append(new_rule)
             
             # Save updated rules
             with open(rules_file, 'w') as f:
-                json.dump(rules, f)
+                json.dump(rules, f, indent=2)
             
-            logger.info(f"Rule added to file storage: {rule_text}")
-            return Rule(text=rule_text, priority=priority, is_active=True)
+            logger.info(f"Rule added to file storage for account {account_id}: {rule_text}")
+            
+            # Return Rule object
+            return Rule(
+                text=rule_text,
+                priority=priority,
+                is_active=True,
+                category=category
+            )
         except Exception as e:
             logger.error(f"Error in fallback rule addition: {e}")
             return None

@@ -1,39 +1,36 @@
-2025-02-25 22:48:41,926 - bot - INFO - Processing update through application...
+2025-02-26 00:46:55,602 - bot - ERROR - Error in message processing: 'HybridMemoryManager' object has no attribute 'get_history_context'
 
-2025-02-25 22:48:42,403 - telegram.ext.ExtBot - DEBUG - Message(channel_chat_created=False, chat=Chat(first_name='Naz', id=308526396, type=<ChatType.PRIVATE>, username='nm_2719'), date=datetime.datetime(2025, 2, 25, 22, 48, 42, tzinfo=datetime.timezone.utc), delete_chat_photo=False, from_user=User(first_name='Dildong', id=8050570051, is_bot=True, username='Dildong_bot'), group_chat_created=False, message_id=230, supergroup_chat_created=False, text="Current Bot Rules:\n\n1. Be helpful, concise, and friendly. (Priority: 10)\n2. Respond in the same language as the user's message. (Priority: 9)\n3. If you learn someone's name, use it in future responses. (Priority: 8)\n4. Keep track of important information shared in conversation. (Priority: 7)\n5. Be respectful and maintain a positive tone. (Priority: 6)")
+2025-02-26 00:46:55,602 - bot - DEBUG - [DEBUG][Chat -1002157344870] Processing error: 'HybridMemoryManager' object has no attribute 'get_history_context'
 
-2025-02-25 22:48:41,926 - bot - INFO - Calling process_update...
+2025-02-26 00:46:55,602 - bot - DEBUG - [DEBUG][Chat -1002157344870] Attempting fallback
 
-2025-02-25 22:48:41,926 - bot - INFO - Processing /rules command from chat_id 308526396
+2025-02-26 00:46:55,622 - httpcore.connection - DEBUG - connect_tcp.started host='api.openai.com' port=443 local_address=None timeout=5.0 socket_options=None
 
-2025-02-25 22:48:41,926 - utils.database - DEBUG - Using file-based fallback for temporary account
+2025-02-26 00:46:55,637 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcba73d8dd0>
 
-2025-02-25 22:48:41,927 - utils.rule_manager - ERROR - Cannot get rules: Supabase client is not initialized
+2025-02-26 00:46:55,637 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x7fcba787f1d0> server_hostname='api.openai.com' timeout=5.0
 
-2025-02-25 22:48:41,927 - bot - INFO - No rules found for account 2. Creating default rules.
+2025-02-26 00:46:55,650 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcba75bbf90>
 
-2025-02-25 22:48:41,927 - utils.rule_manager - ERROR - Cannot create default rules: Supabase client is not initialized
+2025-02-26 00:46:55,650 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'POST']>
 
-2025-02-25 22:48:41,927 - utils.rule_manager - INFO - Using file-based fallback for default rules
+2025-02-26 00:46:55,651 - httpcore.http11 - DEBUG - send_request_headers.complete
 
-2025-02-25 22:48:41,928 - utils.rule_manager - INFO - Default rules created in file storage for account 2
+2025-02-26 00:46:55,651 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'POST']>
 
-2025-02-25 22:48:41,928 - utils.rule_manager - ERROR - Cannot get rules: Supabase client is not initialized
+2025-02-26 00:46:55,651 - httpcore.http11 - DEBUG - send_request_body.complete
 
-2025-02-25 22:48:41,928 - bot - INFO - Created 5 default rules for account 2
+2025-02-26 00:46:55,651 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'POST']>
 
-2025-02-25 22:48:41,928 - telegram.ext.ExtBot - DEBUG - Entering: send_message
+2025-02-26 00:46:56,142 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 26 Feb 2025 00:46:56 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'access-control-expose-headers', b'X-Request-ID'), (b'openai-organization', b'user-jrobrdv8bldfakdoyxdsiky9'), (b'openai-processing-ms', b'347'), (b'openai-version', b'2020-10-01'), (b'x-ratelimit-limit-requests', b'10000'), (b'x-ratelimit-limit-tokens', b'200000'), (b'x-ratelimit-remaining-requests', b'9999'), (b'x-ratelimit-remaining-tokens', b'196981'), (b'x-ratelimit-reset-requests', b'8.64s'), (b'x-ratelimit-reset-tokens', b'905ms'), (b'x-request-id', b'req_e686fb045f86202cb66d6e3ac15338e9'), (b'strict-transport-security', b'max-age=31536000; includeSubDomains; preload'), (b'CF-Cache-Status', b'DYNAMIC'), (b'Set-Cookie', b'__cf_bm=0UU1eCEIXYaY4f4vNo4.HzGk9H50sARw.4r1eW8EqqQ-1740530816-1.0.1.1-75RmbdnKPUKIiymVLwjEvDra.Ul0msqal5V1uVmHOThgPzcSyYa50oIXyp.z.lFVl8ZDX9Dt.o3pGD66wkMbiw; path=/; expires=Wed, 26-Feb-25 01:16:56 GMT; domain=.api.openai.com; HttpOnly; Secure; SameSite=None'), (b'X-Content-Type-Options', b'nosniff'), (b'Set-Cookie', b'_cfuvid=FBsRUVAbNczxlz5HlfIlyLog0MKedk8r3kZGGGwHBjw-1740530816139-0.0.1.1-604800000; path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None'), (b'Server', b'cloudflare'), (b'CF-RAY', b'917bebbdd9fb6456-SJC'), (b'Content-Encoding', b'gzip'), (b'alt-svc', b'h3=":443"; ma=86400')])
 
-2025-02-25 22:48:41,929 - httpcore.connection - DEBUG - close.started
+2025-02-26 00:46:56,143 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
 
-2025-02-25 22:48:41,929 - httpcore.connection - DEBUG - close.complete
+2025-02-26 00:46:56,144 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'POST']>
 
-2025-02-25 22:48:41,929 - httpcore.connection - DEBUG - connect_tcp.started host='api.telegram.org' port=443 local_address=None timeout=5.0 socket_options=None
+2025-02-26 00:46:56,147 - httpcore.http11 - DEBUG - receive_response_body.complete
 
-2025-02-25 22:48:42,079 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x7f2370a99790>
+2025-02-26 00:46:56,148 - httpcore.http11 - DEBUG - response_closed.started
 
-2025-02-25 22:48:42,079 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x7f2370b4ec30> server_hostname='api.telegram.org' timeout=5.0
+2025-02-26 00:46:56,148 - httpcore.http11 - DEBUG - response_closed.complete
 
-2025-02-25 22:48:42,229 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x7f2370a991d0>
-
-2025-02-25 22:48:42,229 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'POST']>

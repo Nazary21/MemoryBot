@@ -132,10 +132,22 @@ async def check_openai_status() -> Dict[str, bool | str]:
 def get_memory_stats() -> Dict[str, int]:
     """Get memory statistics"""
     try:
-        with open('memory/short_term.json', 'r') as f:
-            short_term = json.load(f)
-        with open('memory/history_context.json', 'r') as f:
-            context = json.load(f)
+        # Use account-specific directory (using default account_id=1)
+        memory_dir = "memory/account_1"
+        short_term_file = os.path.join(memory_dir, "short_term.json")
+        history_file = os.path.join(memory_dir, "history_context.json")
+        
+        short_term = []
+        context = []
+        
+        if os.path.exists(short_term_file):
+            with open(short_term_file, 'r') as f:
+                short_term = json.load(f)
+                
+        if os.path.exists(history_file):
+            with open(history_file, 'r') as f:
+                context = json.load(f)
+                
         return {
             "message_count": len(short_term),
             "context_count": len(context)
