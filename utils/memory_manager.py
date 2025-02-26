@@ -22,12 +22,8 @@ class MemoryManager:
         self.whole_history_file = os.path.join(self.memory_dir, "whole_history.json")
         self.history_file = os.path.join(self.memory_dir, "history_context.json")
         
-        # Initialize files if they don't exist
-        for file_path in [self.short_term_file, self.mid_term_file, 
-                         self.whole_history_file, self.history_file]:
-            if not os.path.exists(file_path):
-                with open(file_path, 'w') as f:
-                    json.dump([], f)
+        # Ensure all memory files exist
+        self._ensure_memory_files()
 
     def update_memory(self, user_message: Dict, assistant_message: Dict) -> None:
         """Update all memory levels with new messages"""
@@ -71,24 +67,34 @@ class MemoryManager:
         """Get historical context summary"""
         try:
             history_context = self._load_memory(self.history_file)
+            
+            # Initialize history context if empty
             if not history_context:
-                logger.info(f"No history context found for account {self.account_id}")
-                return ""
+                logger.info(f"Initializing history context for account {self.account_id}")
+                # Add initial context entry
+                initial_context = {
+                    "timestamp": datetime.now().isoformat(),
+                    "category": "system",
+                    "summary": "Chat history initialized."
+                }
+                history_context = [initial_context]
+                self._save_memory(self.history_file, history_context)
             
             # Format context entries with timestamps
             formatted_entries = []
             for entry in history_context:
                 timestamp = entry.get("timestamp", "")
                 summary = entry.get("summary", "")
+                category = entry.get("category", "general")
                 if timestamp and summary:
-                    formatted_entries.append(f"[{timestamp}] {summary}")
+                    formatted_entries.append(f"[{timestamp}] ({category}) {summary}")
                 else:
                     formatted_entries.append(summary)
             
-            return "\n".join(formatted_entries)
+            return "\n".join(formatted_entries) if formatted_entries else "No history available yet."
         except Exception as e:
             logger.error(f"Error getting history context for account {self.account_id}: {e}")
-            return ""
+            return "Error retrieving history context."
 
     def _load_memory(self, file_path: str) -> list:
         """Load memory from file with error handling"""
@@ -139,13 +145,21 @@ class MemoryManager:
         try:
             history = self._load_memory(self.history_file)
             
+            # Initialize if empty
+            if not history:
+                history = []
+            
             history.append({
                 "timestamp": datetime.now().isoformat(),
                 "category": category,
-                "summary": context  # Changed from context to summary to match expected format
+                "summary": context
             })
             
+            # Keep only last 100 entries to prevent unlimited growth
+            history = history[-100:]
+            
             self._save_memory(self.history_file, history)
+            logger.info(f"Added new context entry for account {self.account_id}: {context[:50]}...")
         except Exception as e:
             logger.error(f"Error adding context to history: {e}")
 
@@ -167,3 +181,14 @@ class MemoryManager:
             """,
             self.account_id, message
         ) 
+
+    def _ensure_memory_files(self) -> None:
+        """Ensure all memory files exist with proper structure"""
+        try:
+            for file_path in [self.short_term_file, self.mid_term_file, 
+                            self.whole_history_file, self.history_file]:
+                if not os.path.exists(file_path):
+                    self._save_memory(file_path, [])
+                    logger.info(f"Created memory file: {file_path}")
+        except Exception as e:
+            logger.error(f"Error ensuring memory files: {e}") 

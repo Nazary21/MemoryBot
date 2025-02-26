@@ -2,6 +2,7 @@ import openai
 import httpx
 import json
 import logging
+import os
 from typing import List, Dict, Any, Optional
 from config.ai_providers import AIProviderManager
 from openai import OpenAI
@@ -23,6 +24,10 @@ class AIResponseHandler:
     async def get_account_model_settings(self, account_id: int) -> Dict:
         """Get AI model settings for an account"""
         try:
+            if self.db.supabase is None:
+                # Use file-based storage
+                return self._get_settings_from_file(account_id)
+                
             result = await self.db.supabase.from_('ai_model_settings').select(
                 '*'
             ).eq('account_id', account_id).single().execute()
@@ -33,12 +38,31 @@ class AIResponseHandler:
                     "temperature": result.data['temperature'],
                     "max_tokens": result.data['max_tokens']
                 }
+            return self._get_settings_from_file(account_id)
+        except Exception as e:
+            logger.error(f"Error getting model settings: {e}")
+            return self._get_settings_from_file(account_id)
+
+    def _get_settings_from_file(self, account_id: int) -> Dict:
+        """Get settings from file storage"""
+        try:
+            settings_file = f"memory/account_{account_id}/ai_settings.json"
+            os.makedirs(os.path.dirname(settings_file), exist_ok=True)
+            
+            if os.path.exists(settings_file):
+                with open(settings_file, 'r') as f:
+                    settings = json.load(f)
+                    return {
+                        "model": settings.get('model', self.default_model),
+                        "temperature": settings.get('temperature', self.default_settings['temperature']),
+                        "max_tokens": settings.get('max_tokens', self.default_settings['max_tokens'])
+                    }
             return {
                 "model": self.default_model,
                 **self.default_settings
             }
         except Exception as e:
-            logger.error(f"Error getting model settings: {e}")
+            logger.error(f"Error reading settings file: {e}")
             return {
                 "model": self.default_model,
                 **self.default_settings
@@ -47,15 +71,39 @@ class AIResponseHandler:
     async def update_model_settings(self, account_id: int, settings: Dict) -> bool:
         """Update AI model settings for an account"""
         try:
-            await self.db.supabase.from_('ai_model_settings').upsert({
-                'account_id': account_id,
-                'model_name': settings.get('model', self.default_model),
-                'temperature': settings.get('temperature', self.default_settings['temperature']),
-                'max_tokens': settings.get('max_tokens', self.default_settings['max_tokens'])
-            }).execute()
-            return True
+            if self.db.supabase is None:
+                return self._save_settings_to_file(account_id, settings)
+                
+            try:
+                await self.db.supabase.from_('ai_model_settings').upsert({
+                    'account_id': account_id,
+                    'model_name': settings.get('model', self.default_model),
+                    'temperature': settings.get('temperature', self.default_settings['temperature']),
+                    'max_tokens': settings.get('max_tokens', self.default_settings['max_tokens'])
+                }).execute()
+                return True
+            except Exception as db_error:
+                logger.error(f"Database error updating settings: {db_error}")
+                return self._save_settings_to_file(account_id, settings)
         except Exception as e:
             logger.error(f"Error updating model settings: {e}")
+            return False
+
+    def _save_settings_to_file(self, account_id: int, settings: Dict) -> bool:
+        """Save settings to file storage"""
+        try:
+            settings_file = f"memory/account_{account_id}/ai_settings.json"
+            os.makedirs(os.path.dirname(settings_file), exist_ok=True)
+            
+            with open(settings_file, 'w') as f:
+                json.dump({
+                    'model': settings.get('model', self.default_model),
+                    'temperature': settings.get('temperature', self.default_settings['temperature']),
+                    'max_tokens': settings.get('max_tokens', self.default_settings['max_tokens'])
+                }, f, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"Error saving settings to file: {e}")
             return False
 
     async def get_chat_response(self, account_id: int, messages: List[Dict]) -> Optional[str]:
