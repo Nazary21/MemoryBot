@@ -47,11 +47,9 @@ class RuleManager:
         self.db = db
         # Default rules that will be created for new accounts
         self.default_rules = [
-            {"text": "Be helpful, concise, and friendly.", "priority": 1, "category": "General"},
             {"text": "Respond in the same language as the user's message.", "priority": 1, "category": "Language"},
             {"text": "If you learn someone's name, use it in future responses.", "priority": 1, "category": "Personalization"},
-            {"text": "Keep track of important information shared in conversation.", "priority": 1, "category": "Memory"},
-            {"text": "Be respectful and maintain a positive tone.", "priority": 1, "category": "Tone"}
+            {"text": "Keep track of important information shared in conversation.", "priority": 1, "category": "Memory"}
         ]
 
     async def get_rules(self, account_id: int = 1) -> List[Rule]:

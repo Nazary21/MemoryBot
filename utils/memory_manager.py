@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional
 import logging
+import asyncio
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -38,7 +39,18 @@ class MemoryManager:
             # Update short-term memory
             short_term = self._load_memory(self.short_term_file)
             short_term.extend([user_message, assistant_message])
-            self._save_memory(self.short_term_file, short_term[-50:])  # Keep last 50 messages
+            
+            # Check if we need to generate context before truncating
+            if len(short_term) >= 50:
+                logger.info("Short-term memory reached 50 messages, generating context summary...")
+                try:
+                    from utils.whole_history_analyzer import analyze_whole_history
+                    asyncio.create_task(analyze_whole_history())
+                except Exception as e:
+                    logger.error(f"Error triggering context generation: {e}")
+            
+            # Keep last 50 messages
+            self._save_memory(self.short_term_file, short_term[-50:])
 
             # Update mid-term memory
             mid_term = self._load_memory(self.mid_term_file)

@@ -334,15 +334,20 @@ async def whole_history_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def history_context_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # Force an update of the history context
-        logger.info("Forcing history context update...")
-        await analyze_whole_history()
+        chat_id = update.effective_chat.id
+        memory_manager = await get_memory_manager(chat_id)
         
-        # Get history context using memory manager
+        # Get history context first
         history_context = memory_manager.get_history_context()
         
+        # If empty or only contains initialization message, generate new context
+        if not history_context or (len(history_context.split('\n')) == 1 and "initialized" in history_context):
+            logger.info("History context empty or only initialized, generating new context...")
+            await analyze_whole_history()
+            history_context = memory_manager.get_history_context()
+        
         if not history_context:
-            await update.message.reply_text("No history context available")
+            await update.message.reply_text("Error: Could not generate history context")
             return
             
         await update.message.reply_text(f"📝 History Context:\n\n{history_context}")
@@ -433,17 +438,25 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             short_term_memory = await memory_manager.get_memory(chat_id, 'short_term')
             debug_log(chat_id, "Memory fetched", f"Context size: {len(short_term_memory)}")
             
+            # Get history context
+            history_context = memory_manager.get_history_context()
+            debug_log(chat_id, "History context fetched")
+            
             # Get active rules
             rules = await rule_manager.get_rules(account_id=1)
             rules_text = rule_manager.get_formatted_rules(rules)
             
-            # Prepare messages for AI with rules
-            messages = [
-                {"role": "system", "content": f"You are a helpful assistant. Follow these rules:\n{rules_text}"}
-            ]
+            # Prepare messages for AI with rules and history context
+            system_message = f"""You are a conversation companion. Follow these rules:
+{rules_text}
+
+Previous conversation history context:
+{history_context}"""
+
+            messages = [{"role": "system", "content": system_message}]
             
-            # Add context from memory
-            for msg in short_term_memory[-5:]:  # Last 5 messages for context
+            # Add ALL context from short-term memory
+            for msg in short_term_memory:  # Using all messages instead of just last 5
                 messages.append({
                     "role": msg.get('role', 'user'),
                     "content": msg.get('content', '')
