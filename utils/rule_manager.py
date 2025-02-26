@@ -261,28 +261,43 @@ class RuleManager:
 
     def get_formatted_rules(self, rules: List[Rule] = None) -> str:
         """Format rules for display"""
-        if rules is None or not rules:
-            return "No active rules configured."
+        try:
+            logger.info(f"Formatting {len(rules) if rules else 0} rules")
             
-        # Group rules by category
-        rules_by_category = {}
-        for rule in rules:
-            category = getattr(rule, 'category', 'General')  # Default to General if no category
-            if category not in rules_by_category:
-                rules_by_category[category] = []
-            rules_by_category[category].append(rule)
-        
-        # Format output
-        formatted = "Current Bot Rules:\n\n"
-        for category, category_rules in rules_by_category.items():
-            formatted += f"{category}:\n"
-            for i, rule in enumerate(category_rules, 1):
-                formatted += f"{i}. {rule.text}"
-                if rule.priority == 0:  # Only show if inactive
-                    formatted += " (Inactive)"
+            if rules is None or not rules:
+                logger.warning("No rules provided for formatting")
+                # Return default rules text instead of "No active rules"
+                formatted = "Current Bot Rules:\n\n"
+                for rule in self.default_rules:
+                    formatted += f"- {rule['text']}\n"
+                logger.info(f"Using {len(self.default_rules)} default rules")
+                return formatted.strip()
+                
+            # Group rules by category
+            rules_by_category = {}
+            for rule in rules:
+                category = getattr(rule, 'category', 'General')  # Default to General if no category
+                if category not in rules_by_category:
+                    rules_by_category[category] = []
+                rules_by_category[category].append(rule)
+            
+            # Format output
+            formatted = "Current Bot Rules:\n\n"
+            for category, category_rules in rules_by_category.items():
+                formatted += f"{category}:\n"
+                for i, rule in enumerate(category_rules, 1):
+                    formatted += f"{i}. {rule.text}"
+                    if rule.priority == 0:  # Only show if inactive
+                        formatted += " (Inactive)"
+                    formatted += "\n"
                 formatted += "\n"
-            formatted += "\n"
-        return formatted.strip()
+            
+            logger.info(f"Formatted {len(rules)} rules in {len(rules_by_category)} categories")
+            return formatted.strip()
+        except Exception as e:
+            logger.error(f"Error formatting rules: {e}")
+            # Return default rules as fallback
+            return "\n".join([f"- {rule['text']}" for rule in self.default_rules])
 
     async def add_rule(self, account_id: int, rule_text: str, category: str = "General", priority: int = 0) -> Optional[Rule]:
         """Add a new rule for an account"""

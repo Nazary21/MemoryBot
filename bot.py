@@ -436,15 +436,32 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Get conversation context from memory
             debug_log(chat_id, "Fetching memory")
             short_term_memory = await memory_manager.get_memory(chat_id, 'short_term')
-            debug_log(chat_id, "Memory fetched", f"Context size: {len(short_term_memory)}")
+            debug_log(chat_id, "Memory fetched", f"Retrieved {len(short_term_memory)} messages from short-term memory")
             
             # Get history context
             history_context = memory_manager.get_history_context()
             debug_log(chat_id, "History context fetched")
             
             # Get active rules
+            debug_log(chat_id, "Fetching rules")
             rules = await rule_manager.get_rules(account_id=1)
+            debug_log(chat_id, "Rules fetched", f"Found {len(rules) if rules else 0} rules")
+            
+            # If no rules found, try to create default rules
+            if not rules:
+                debug_log(chat_id, "No rules found, creating defaults")
+                success = await rule_manager.create_default_rules(account_id=1)
+                if success:
+                    rules = await rule_manager.get_rules(account_id=1)
+                    debug_log(chat_id, "Default rules created", f"Created {len(rules)} rules")
+                else:
+                    debug_log(chat_id, "Failed to create default rules")
+                    # Try fallback method
+                    rules = rule_manager._get_rules_fallback(account_id=1)
+                    debug_log(chat_id, "Using fallback rules", f"Got {len(rules)} rules from fallback")
+            
             rules_text = rule_manager.get_formatted_rules(rules)
+            debug_log(chat_id, "Rules formatted", f"Rules text length: {len(rules_text)}")
             
             # Prepare messages for AI with rules and history context
             system_message = f"""You are a conversation companion. Follow these rules:
@@ -456,15 +473,19 @@ Previous conversation history context:
             messages = [{"role": "system", "content": system_message}]
             
             # Add ALL context from short-term memory
+            message_count = 0
             for msg in short_term_memory:  # Using all messages instead of just last 5
                 messages.append({
                     "role": msg.get('role', 'user'),
                     "content": msg.get('content', '')
                 })
+                message_count += 1
+            
+            debug_log(chat_id, "Context prepared", f"Added {message_count} messages from short-term memory to context")
             
             # Add current user message
             messages.append({"role": "user", "content": user_input})
-            debug_log(chat_id, "Messages prepared", f"Total messages: {len(messages)}")
+            debug_log(chat_id, "Messages prepared", f"Total messages including system and current: {len(messages)}")
             
             # Get AI response using AIResponseHandler
             debug_log(chat_id, "Getting AI response")

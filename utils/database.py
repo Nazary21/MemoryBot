@@ -305,24 +305,29 @@ class Database:
         except Exception as e:
             logger.error(f"Error in fallback message storage: {e}")
 
-    async def get_chat_memory(self, chat_id: int, memory_type: str = 'short_term', limit: int = 50) -> List[Dict]:
+    async def get_chat_memory(self, chat_id: int, memory_type: str = 'short_term', limit: Optional[int] = 50) -> List[Dict]:
         """Get chat memory by type"""
         try:
             if not self.initialized:
                 logger.warning("Using file-based fallback for get_chat_memory")
                 return self._get_chat_memory_fallback(chat_id, memory_type, limit)
                 
-            result = await self.supabase.from_('chat_history').select('*').eq(
+            query = self.supabase.from_('chat_history').select('*').eq(
                 'telegram_chat_id', chat_id
-            ).eq('memory_type', memory_type).order('timestamp', desc=True).limit(limit).execute()
+            ).eq('memory_type', memory_type).order('timestamp', desc=True)
             
+            # Only apply limit if it's not None
+            if limit is not None:
+                query = query.limit(limit)
+                
+            result = await query.execute()
             return result.data
             
         except Exception as e:
             logger.error(f"Error getting chat memory: {e}")
             return self._get_chat_memory_fallback(chat_id, memory_type, limit)
     
-    def _get_chat_memory_fallback(self, chat_id: int, memory_type: str, limit: int) -> List[Dict]:
+    def _get_chat_memory_fallback(self, chat_id: int, memory_type: str, limit: Optional[int]) -> List[Dict]:
         """Fallback method to get chat memory using file storage"""
         try:
             # Load existing messages
@@ -335,12 +340,16 @@ class Database:
                 if msg.get('telegram_chat_id') == chat_id and msg.get('memory_type') == memory_type
             ]
             
-            # Sort by timestamp (newest first) and limit
+            # Sort by timestamp (newest first)
             sorted_messages = sorted(
                 filtered_messages, 
                 key=lambda x: x.get('timestamp', ''), 
                 reverse=True
-            )[:limit]
+            )
+            
+            # Apply limit only if it's not None
+            if limit is not None:
+                sorted_messages = sorted_messages[:limit]
             
             return sorted_messages
         except Exception as e:

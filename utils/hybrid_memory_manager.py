@@ -70,8 +70,8 @@ class HybridMemoryManager:
             raise ValueError(f"Invalid memory type: {memory_type}")
             
         try:
-            # Try database first
-            memory = await self.db.get_chat_memory(chat_id, memory_type)
+            # Try database first - pass None as limit to get all messages
+            memory = await self.db.get_chat_memory(chat_id, memory_type, limit=None)
             
             if memory:
                 return memory
@@ -81,7 +81,7 @@ class HybridMemoryManager:
             if file_memory:
                 # Migrate to database if possible
                 await self._migrate_memory_to_db(chat_id, file_memory, memory_type)
-                return await self.db.get_chat_memory(chat_id, memory_type)
+                return await self.db.get_chat_memory(chat_id, memory_type, limit=None)
                 
             return []
             
