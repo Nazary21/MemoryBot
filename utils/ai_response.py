@@ -224,4 +224,26 @@ class AIResponseHandler:
     def get_current_model(self) -> str:
         """Get current AI model information"""
         provider_info = self.provider_manager.get_provider()
-        return f"{provider_info['display_name']} ({provider_info['model']})" 
+        return f"{provider_info['display_name']} ({provider_info['model']})"
+
+def get_ai_response(messages: List[Dict[str, str]], provider_config: Dict[str, Any]) -> str:
+    """Get AI response using configured provider"""
+    try:
+        logger.info(f"Using AI provider: {provider_config['provider']}")
+        
+        if provider_config['provider'] == 'openai':
+            logger.info("Using OpenAI API")
+            client = OpenAI(api_key=provider_config['api_key'])
+            response = client.chat.completions.create(
+                model=provider_config['model'],
+                messages=messages,
+                temperature=provider_config.get('temperature', 0.7),
+                max_tokens=provider_config.get('max_tokens', 1000)
+            )
+            return response.choices[0].message.content
+
+        # ... existing code for other providers ...
+
+    except Exception as e:
+        logger.error(f"AI provider error: {str(e)}")
+        raise 

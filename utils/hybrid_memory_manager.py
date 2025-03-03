@@ -1,9 +1,11 @@
 import logging
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from utils.memory_manager import MemoryManager
 from utils.database import Database
+
+HISTORY_CONTEXT_FILE = "history_context.json"
 
 logger = logging.getLogger(__name__)
 
