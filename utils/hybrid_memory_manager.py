@@ -30,12 +30,13 @@ class HybridMemoryManager:
     
     VALID_MEMORY_TYPES = {'short_term', 'mid_term', 'whole_history'}
     
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, account_id: int = None):
         """
         Initialize the hybrid memory manager.
         
         Args:
             db: Database instance for primary storage
+            account_id: Optional account ID for file storage (defaults to 1 for system-level fallback)
             
         The manager sets up both database and file-based storage systems:
         1. Database connection through the provided Database instance
@@ -43,8 +44,10 @@ class HybridMemoryManager:
         3. Legacy file manager for backward compatibility
         """
         self.db = db
-        # Initialize file manager with default account for fallback
-        self.file_manager = MemoryManager(account_id=1, db=db)
+        # Use provided account_id or default to 1 for system-level fallback
+        self.account_id = account_id if account_id is not None else 1
+        # Initialize file manager with the correct account
+        self.file_manager = MemoryManager(account_id=self.account_id, db=db)
         # Base memory directory
         self.memory_dir = "memory"
         os.makedirs(self.memory_dir, exist_ok=True)

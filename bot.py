@@ -416,6 +416,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
         debug_log(chat_id, "Message received", f"From user: {update.effective_user.username}")
         
+        # Get or create account for this chat
+        account = await db.get_or_create_temporary_account(chat_id)
+        account_id = account.get('id', 1)  # Fallback to 1 if not found
+        debug_log(chat_id, "Account retrieved", f"Using account_id: {account_id}")
+        
         # Verify if this is a reply to bot's message
         if update.message.reply_to_message:
             if update.message.reply_to_message.from_user.id != context.bot.id:
@@ -449,30 +454,32 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             history_context = memory_manager.get_history_context()
             debug_log(chat_id, "History context fetched")
             
-            # Get active rules
+            # Get active rules for this account
             debug_log(chat_id, "Fetching rules")
-            rules = await rule_manager.get_rules(account_id=1)
+            rules = await rule_manager.get_rules(account_id=account_id)
             debug_log(chat_id, "Rules fetched", f"Found {len(rules) if rules else 0} rules")
             
             # If no rules found, try to create default rules
             if not rules:
                 debug_log(chat_id, "No rules found, creating defaults")
-                success = await rule_manager.create_default_rules(account_id=1)
+                success = await rule_manager.create_default_rules(account_id=account_id)
                 if success:
-                    rules = await rule_manager.get_rules(account_id=1)
+                    rules = await rule_manager.get_rules(account_id=account_id)
                     debug_log(chat_id, "Default rules created", f"Created {len(rules)} rules")
                 else:
                     debug_log(chat_id, "Failed to create default rules")
                     # Try fallback method
-                    rules = rule_manager._get_rules_fallback(account_id=1)
+                    rules = rule_manager._get_rules_fallback(account_id=account_id)
                     debug_log(chat_id, "Using fallback rules", f"Got {len(rules)} rules from fallback")
             
             rules_text = rule_manager.get_formatted_rules(rules)
             debug_log(chat_id, "Rules formatted", f"Rules text length: {len(rules_text)}")
             
             # Prepare messages for AI with rules and history context
-            system_message = f"""You are a conversation companion. Follow these rules:
+            system_message = f"""Follow these rules strictly, they define your core identity and behavior:
 {rules_text}
+
+Remember: These rules define who you are - especially your personality and character traits. Embody them in every response.
 
 Previous conversation history context:
 {history_context}"""
@@ -494,9 +501,9 @@ Previous conversation history context:
             messages.append({"role": "user", "content": user_input})
             debug_log(chat_id, "Messages prepared", f"Total messages including system and current: {len(messages)}")
             
-            # Get AI response using AIResponseHandler
+            # Get AI response using AIResponseHandler with account-specific settings
             debug_log(chat_id, "Getting AI response")
-            response_text = await ai_handler.get_chat_response(account_id=1, messages=messages)
+            response_text = await ai_handler.get_chat_response(account_id=account_id, messages=messages)
             debug_log(chat_id, "Got AI response", f"Length: {len(response_text)}")
             
             # Store both user message and response in memory
@@ -515,7 +522,7 @@ Previous conversation history context:
             # Attempt basic fallback without context
             try:
                 debug_log(chat_id, "Attempting fallback")
-                response_text = await ai_handler.get_chat_response(account_id=1, messages=[
+                response_text = await ai_handler.get_chat_response(account_id=account_id, messages=[
                     {"role": "system", "content": "You are a helpful assistant. Be concise and friendly."},
                     {"role": "user", "content": user_input}
                 ])
@@ -556,12 +563,16 @@ async def get_memory_manager(chat_id: int) -> HybridMemoryManager:
             else:
                 logger.info("Operating with Supabase database")
         
-        # Create hybrid memory manager (will work in both normal and fallback mode)
-        return HybridMemoryManager(get_memory_manager._db)
+        # Get or create account for this chat
+        account = await get_memory_manager._db.get_or_create_temporary_account(chat_id)
+        account_id = account.get('id', 1)  # Fallback to 1 if not found
+        
+        # Create hybrid memory manager with the correct account ID
+        return HybridMemoryManager(get_memory_manager._db, account_id=account_id)
     except Exception as e:
         logger.error(f"Error creating memory manager: {e}")
         # Create a new Database instance that will automatically use fallback mode
-        return HybridMemoryManager(Database())
+        return HybridMemoryManager(Database(), account_id=1)  # Use default account for error cases
 
 # Test endpoint for OpenAI
 @app.get("/test_openai")
