@@ -193,7 +193,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - Show this help message\n"
         "/register - Create a permanent account\n"
         "/status - Check your account status\n"
-        "/account-id - Show your account ID\n"
+        "/account_id - Show your account ID\n"
         "/clear - Clear conversation history\n"
         "/session - Set session duration\n"
         "/analyze - Analyze conversation history\n"
@@ -207,7 +207,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def account_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /account-id command"""
+    """Handle the /account_id command"""
     try:
         chat_id = update.effective_chat.id
         account = await db.get_or_create_temporary_account(chat_id)
@@ -692,7 +692,7 @@ async def setup_commands():
             BotCommand("help", "Show available commands"),
             BotCommand("register", "Create a permanent account"),
             BotCommand("status", "Check your account status"),
-            BotCommand("account-id", "Show your account ID"),
+            BotCommand("account_id", "Show your account ID"),
             BotCommand("clear", "Clear conversation history"),
             BotCommand("session", "Set session duration"),
             BotCommand("analyze", "Analyze conversation history"),
@@ -725,7 +725,7 @@ try:
     application.add_handler(CommandHandler("historycontext", history_context_command))
     application.add_handler(CommandHandler("rules", rules_command))
     application.add_handler(CommandHandler("model", model_command))
-    application.add_handler(CommandHandler("account-id", account_id_command))
+    application.add_handler(CommandHandler("account_id", account_id_command))
     # Update message handler to use Mention filter or reply filter
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.Entity("mention") | filters.REPLY),
