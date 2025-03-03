@@ -217,6 +217,10 @@ async def dashboard(request: Request, auth_info: dict = Depends(verify_credentia
         ai_handler = AIResponseHandler(db)
         current_settings = await ai_handler.get_account_model_settings(account_id=1)
 
+        # Get account info
+        account = await db.get_or_create_temporary_account(1)  # Using 1 as default for dashboard
+        account_id = account.get('id', 1)
+
         return templates.TemplateResponse(
             "dashboard.html",
             {
@@ -239,7 +243,8 @@ async def dashboard(request: Request, auth_info: dict = Depends(verify_credentia
                 "username": auth_info["username"],
                 "using_default_auth": auth_info["using_defaults"],
                 "current_settings": current_settings,
-                "available_models": ai_handler.get_available_models()
+                "available_models": ai_handler.get_available_models(),
+                "account_id": account_id  # Add account ID to template context
             }
         )
     except Exception as e:

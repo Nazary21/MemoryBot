@@ -193,6 +193,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - Show this help message\n"
         "/register - Create a permanent account\n"
         "/status - Check your account status\n"
+        "/account-id - Show your account ID\n"
         "/clear - Clear conversation history\n"
         "/session - Set session duration\n"
         "/analyze - Analyze conversation history\n"
@@ -204,6 +205,23 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/rules - Show current bot rules\n"
         "/model - Show current AI model"
     )
+
+async def account_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /account-id command"""
+    try:
+        chat_id = update.effective_chat.id
+        account = await db.get_or_create_temporary_account(chat_id)
+        account_id = account.get('id', 1)
+        
+        await update.message.reply_text(
+            f"🆔 Your Account ID: {account_id}\n\n"
+            f"{'(Using fallback mode)' if db.fallback_mode else ''}"
+        )
+    except Exception as e:
+        logger.error(f"Error in account_id_command: {e}")
+        await update.message.reply_text(
+            "Sorry, there was an error retrieving your account ID. Please try again."
+        )
 
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -672,6 +690,9 @@ async def setup_commands():
         commands = [
             BotCommand("start", "Start the bot"),
             BotCommand("help", "Show available commands"),
+            BotCommand("register", "Create a permanent account"),
+            BotCommand("status", "Check your account status"),
+            BotCommand("account-id", "Show your account ID"),
             BotCommand("clear", "Clear conversation history"),
             BotCommand("session", "Set session duration"),
             BotCommand("analyze", "Analyze conversation history"),
@@ -704,6 +725,7 @@ try:
     application.add_handler(CommandHandler("historycontext", history_context_command))
     application.add_handler(CommandHandler("rules", rules_command))
     application.add_handler(CommandHandler("model", model_command))
+    application.add_handler(CommandHandler("account-id", account_id_command))
     # Update message handler to use Mention filter or reply filter
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.Entity("mention") | filters.REPLY),
