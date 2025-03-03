@@ -56,28 +56,30 @@ class RuleManager:
 
     async def get_rules(self, account_id: int = 1) -> List[Rule]:
         """Get active rules for an account"""
+        rules = []
         try:
-            # Check if Supabase client is initialized
+            logger.info(f"Getting rules for account {account_id}")
+            
             if self.db.supabase is None:
-                logger.error("Cannot get rules: Supabase client is not initialized")
-                # Use file-based fallback
+                logger.info("Database not available, using fallback storage")
                 return self._get_rules_fallback(account_id)
-                
-            # Ensure database schema is up to date
-            await self._migrate_add_category_column()
-                
+            
             # Get account-specific rules
+            logger.info(f"Fetching account-specific rules for account {account_id}")
             result = await self.db.supabase.from_('bot_rules').select(
                 '*'
             ).eq('account_id', account_id).eq('is_active', True).order('priority', desc=True).execute()
             
-            rules = []
+            logger.info(f"Found {len(result.data)} account-specific rules")
             
-            # If this isn't account 1, also get global rules from account 1
+            # Get global rules from account 1 if this is not account 1
             if account_id != 1:
+                logger.info("Fetching global rules from account 1")
                 global_result = await self.db.supabase.from_('bot_rules').select(
                     '*'
                 ).eq('account_id', 1).eq('is_active', True).order('priority', desc=True).execute()
+                
+                logger.info(f"Found {len(global_result.data)} global rules")
                 
                 # Add global rules first (they have lower priority)
                 rules.extend([Rule(
@@ -86,6 +88,7 @@ class RuleManager:
                     is_active=rule['is_active'],
                     category=rule.get('category', 'General')
                 ) for rule in global_result.data])
+                logger.info(f"Added {len(global_result.data)} global rules")
             
             # Add account-specific rules (they have higher priority)
             rules.extend([Rule(
@@ -94,23 +97,12 @@ class RuleManager:
                 is_active=rule['is_active'],
                 category=rule.get('category', 'General')
             ) for rule in result.data])
+            logger.info(f"Added {len(result.data)} account-specific rules")
             
-            # If no rules found at all, create default rules
-            if not rules:
-                logger.info(f"No rules found for account {account_id}. Creating default rules.")
-                await self.create_default_rules(account_id)
-                
-                # Try to get rules again
-                result = await self.db.supabase.from_('bot_rules').select(
-                    '*'
-                ).eq('account_id', account_id).eq('is_active', True).order('priority', desc=True).execute()
-                
-                rules = [Rule(
-                    text=rule['rule_text'],
-                    priority=rule['priority'],
-                    is_active=rule['is_active'],
-                    category=rule.get('category', 'General')
-                ) for rule in result.data]
+            # Log final rule set
+            logger.info(f"Total rules for account {account_id}: {len(rules)}")
+            for rule in rules:
+                logger.info(f"Rule: {rule.text[:50]}... (Priority: {rule.priority})")
             
             return rules
         except Exception as e:

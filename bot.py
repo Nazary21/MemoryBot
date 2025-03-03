@@ -360,13 +360,20 @@ async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         chat_id = update.effective_chat.id
         logger.info(f"Processing /rules command from chat_id {chat_id}")
+        debug_log(chat_id, "rules_command", "Starting rules retrieval")
         
         # Get or create account for this chat
         account = await db.get_or_create_temporary_account(chat_id)
         account_id = account.get('id', 1)  # Default to 1 if not found
+        debug_log(chat_id, "rules_command", f"Using account_id: {account_id}")
         
         # Get rules for this account
         rules = await rule_manager.get_rules(account_id=account_id)
+        debug_log(chat_id, "rules_command", f"Retrieved {len(rules)} rules")
+        
+        # Log each rule for debugging
+        for i, rule in enumerate(rules):
+            debug_log(chat_id, "rules_command", f"Rule {i+1}: {rule.text[:50]}... (Priority: {rule.priority})")
         
         # If no rules found, try to create default rules
         if not rules:
@@ -411,15 +418,23 @@ def debug_log(chat_id: int, stage: str, details: str = None):
     logger.debug(message)
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle incoming messages with hybrid memory support"""
+    """Handle incoming messages"""
     try:
         chat_id = update.effective_chat.id
-        debug_log(chat_id, "Message received", f"From user: {update.effective_user.username}")
+        debug_log(chat_id, "message_handler", "Starting message processing")
         
         # Get or create account for this chat
         account = await db.get_or_create_temporary_account(chat_id)
-        account_id = account.get('id', 1)  # Fallback to 1 if not found
-        debug_log(chat_id, "Account retrieved", f"Using account_id: {account_id}")
+        account_id = account.get('id', 1)  # Default to 1 if not found
+        debug_log(chat_id, "message_handler", f"Using account_id: {account_id}")
+        
+        # Get rules for this account
+        rules = await rule_manager.get_rules(account_id=account_id)
+        debug_log(chat_id, "message_handler", f"Retrieved {len(rules)} rules")
+        
+        # Log each rule for debugging
+        for i, rule in enumerate(rules):
+            debug_log(chat_id, "message_handler", f"Rule {i+1}: {rule.text[:50]}... (Priority: {rule.priority})")
         
         # Verify if this is a reply to bot's message
         if update.message.reply_to_message:
