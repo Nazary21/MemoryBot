@@ -18,7 +18,7 @@ class AIResponseHandler:
         self.default_model = "gpt-3.5-turbo"
         self.default_settings = {
             "temperature": 1.0,
-            "max_tokens": 2000
+            "max_tokens": 3000
         }
 
     async def get_account_model_settings(self, account_id: int) -> Dict:

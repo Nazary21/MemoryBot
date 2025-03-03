@@ -358,55 +358,40 @@ async def history_context_command(update: Update, context: ContextTypes.DEFAULT_
         # Get memory manager for this chat
         memory_manager = await get_memory_manager(chat_id)
         
-        # Get initial history context using file manager (as history context is still file-based)
-        history_context = memory_manager.file_manager.get_history_context()
+        # Get initial history context directly from hybrid memory manager
+        history_context = memory_manager.get_history_context()
         logger.info(f"Initial history context: {history_context}")
         
         # If empty or only initialization message, generate new context
-        if not history_context or history_context == "Error retrieving history context." or "Chat history initialized" in history_context:
+        if not history_context or "Chat history initialized" in history_context:
             await update.message.reply_text("📝 Generating history context... This may take a moment.")
             logger.info("History context empty or needs update, generating new context...")
             
             # Analyze history to generate context
             try:
+                from utils.whole_history_analyzer import analyze_whole_history
                 context_data = await analyze_whole_history(memory_manager)
-                logger.info("History analysis completed")
                 
-                if not context_data:
-                    await update.message.reply_text("❌ Error: Could not generate history context. Please try again later.")
-                    return
-                
-                # Get updated context after analysis
-                history_context = context_data.get('summary')
-                logger.info(f"Generated new history context")
-                
-                if not history_context:
-                    await update.message.reply_text("❌ Error: Generated context was empty. Please try again later.")
+                if context_data and context_data.get('summary'):
+                    history_context = context_data['summary']
+                    await update.message.reply_text("✅ History context generated successfully!")
+                else:
+                    await update.message.reply_text("❌ No significant history to analyze.")
                     return
                     
-                await update.message.reply_text("✅ History context generated successfully!")
-                
-            except Exception as analyze_error:
-                logger.error(f"Error analyzing history: {analyze_error}")
+            except Exception as analysis_error:
+                logger.error(f"Error analyzing history: {analysis_error}")
                 await update.message.reply_text("❌ Error generating history context. Please try again later.")
                 return
         
-        # Format and send the context
-        formatted_context = (
-            "📝 History Context\n"
-            "================\n\n"
-            f"{history_context}\n\n"
-            "Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        )
-        
-        # Split message if too long
-        if len(formatted_context) > 4000:
-            parts = [formatted_context[i:i+4000] for i in range(0, len(formatted_context), 4000)]
-            for i, part in enumerate(parts, 1):
-                await update.message.reply_text(f"Part {i}/{len(parts)}:\n\n{part}")
+        # Split long messages if needed
+        if len(history_context) > 4000:
+            chunks = [history_context[i:i+4000] for i in range(0, len(history_context), 4000)]
+            for i, chunk in enumerate(chunks, 1):
+                await update.message.reply_text(f"📚 History Context (Part {i}/{len(chunks)}):\n\n{chunk}")
         else:
-            await update.message.reply_text(formatted_context)
-        
+            await update.message.reply_text(f"📚 History Context:\n\n{history_context}")
+            
     except Exception as e:
         logger.error(f"Error in history_context_command: {e}", exc_info=True)
         await update.message.reply_text("❌ Error retrieving history context. Please try again later.")
