@@ -22,8 +22,8 @@ async def analyze_whole_history(memory_manager):
         dict: The generated context summary if successful, None if failed
     """
     try:
-        # Load whole history using memory manager
-        whole_history = memory_manager._load_memory(memory_manager.whole_history_file)
+        # Load whole history using memory manager's get_memory method
+        whole_history = await memory_manager.get_memory(memory_manager.account_id, 'whole_history')
         
         if not whole_history:
             logger.info("No history to analyze")
@@ -95,8 +95,8 @@ async def analyze_whole_history(memory_manager):
             "message_count": len(whole_history)
         }
         
-        # Update history context using memory manager
-        memory_manager._save_memory(memory_manager.history_file, [context_data])
+        # Use file manager for saving history context (as HybridMemoryManager uses file manager for history context)
+        memory_manager.file_manager._save_memory(memory_manager.file_manager.history_file, [context_data])
         logger.info(f"Updated history context for account {memory_manager.account_id}")
             
         return context_data

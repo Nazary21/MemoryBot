@@ -358,8 +358,8 @@ async def history_context_command(update: Update, context: ContextTypes.DEFAULT_
         # Get memory manager for this chat
         memory_manager = await get_memory_manager(chat_id)
         
-        # Get initial history context
-        history_context = memory_manager.get_history_context()
+        # Get initial history context using file manager (as history context is still file-based)
+        history_context = memory_manager.file_manager.get_history_context()
         logger.info(f"Initial history context: {history_context}")
         
         # If empty or only initialization message, generate new context
