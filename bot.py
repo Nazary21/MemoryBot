@@ -415,6 +415,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         chat_id = update.effective_chat.id
         debug_log(chat_id, "Message received", f"From user: {update.effective_user.username}")
+        
+        # Verify if this is a reply to bot's message
+        if update.message.reply_to_message:
+            if update.message.reply_to_message.from_user.id != context.bot.id:
+                debug_log(chat_id, "Ignored reply", "Not a reply to bot's message")
+                return
+                
         original_text = update.message.text
         debug_log(chat_id, "Original text", original_text)
         
