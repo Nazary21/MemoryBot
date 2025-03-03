@@ -227,13 +227,28 @@ class HybridMemoryManager:
 
     def get_history_context(self) -> str:
         """
-        Get historical context summary using file manager fallback.
+        Get historical context summary using direct file access.
         
         Returns:
             String containing the formatted history context
         """
         try:
-            return self.file_manager.get_history_context()
+            history_file = os.path.join(self.memory_dir, f"account_{self.account_id}", HISTORY_CONTEXT_FILE)
+            
+            if not os.path.exists(history_file):
+                logger.info(f"No history context file found for account {self.account_id}")
+                return ""
+                
+            with open(history_file, 'r') as f:
+                context_data = json.load(f)
+                
+            if not context_data or not isinstance(context_data, list) or len(context_data) == 0:
+                logger.info("History context file is empty or invalid")
+                return ""
+                
+            latest_context = context_data[0]  # Get most recent context
+            return latest_context.get('summary', '')
+                
         except Exception as e:
             logger.error(f"Error getting history context: {e}")
-            return "Error retrieving history context." 
+            return "" 

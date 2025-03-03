@@ -95,8 +95,13 @@ async def analyze_whole_history(memory_manager):
             "message_count": len(whole_history)
         }
         
-        # Use file manager for saving history context (as HybridMemoryManager uses file manager for history context)
-        memory_manager.file_manager._save_memory(memory_manager.file_manager.history_file, [context_data])
+        # Save using the memory manager's own method
+        history_file = os.path.join(memory_manager.memory_dir, f"account_{memory_manager.account_id}", HISTORY_CONTEXT_FILE)
+        os.makedirs(os.path.dirname(history_file), exist_ok=True)
+        
+        with open(history_file, 'w') as f:
+            json.dump([context_data], f, indent=2)
+            
         logger.info(f"Updated history context for account {memory_manager.account_id}")
             
         return context_data
