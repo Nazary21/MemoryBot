@@ -18,22 +18,28 @@ class Database:
         if not self.initialized:
             logger.warning("⚠️ FALLBACK MODE ACTIVE: Database operations will use file-based storage")
             self.setup_file_fallback()
+            # Migrate any legacy files
+            self.migrate_legacy_files()
         else:
             logger.info("✅ Database connection successful")
     
     def setup_file_fallback(self):
         """Set up file-based fallback storage"""
         try:
-            # Create memory directory if it doesn't exist
+            # Create base memory directory if it doesn't exist
             self.memory_dir = "memory"
             os.makedirs(self.memory_dir, exist_ok=True)
             
+            # Create account-specific directory for default account
+            self.account_dir = os.path.join(self.memory_dir, "account_1")
+            os.makedirs(self.account_dir, exist_ok=True)
+            
             # Create default files if they don't exist
             self.fallback_files = {
-                'temporary_accounts': os.path.join(self.memory_dir, "temporary_accounts.json"),
-                'accounts': os.path.join(self.memory_dir, "accounts.json"),
-                'chat_history': os.path.join(self.memory_dir, "chat_history.json"),
-                'bot_rules': os.path.join(self.memory_dir, "bot_rules.json")
+                'temporary_accounts': os.path.join(self.account_dir, "temporary_accounts.json"),
+                'accounts': os.path.join(self.account_dir, "accounts.json"),
+                'chat_history': os.path.join(self.account_dir, "chat_history.json"),
+                'bot_rules': os.path.join(self.account_dir, "bot_rules.json")
             }
             
             # Initialize files with empty arrays if they don't exist
@@ -281,9 +287,16 @@ class Database:
     def _store_chat_message_fallback(self, account_id: int, chat_id: int, role: str, content: str, memory_type: str):
         """Fallback method to store chat message using file storage"""
         try:
+            # Use account-specific directory
+            account_dir = os.path.join(self.memory_dir, f"account_{account_id}")
+            os.makedirs(account_dir, exist_ok=True)
+            chat_history_file = os.path.join(account_dir, "chat_history.json")
+            
             # Load existing messages
-            with open(self.fallback_files['chat_history'], 'r') as f:
-                messages = json.load(f)
+            messages = []
+            if os.path.exists(chat_history_file):
+                with open(chat_history_file, 'r') as f:
+                    messages = json.load(f)
             
             # Add new message
             new_message = {
@@ -299,7 +312,7 @@ class Database:
             messages.append(new_message)
             
             # Save updated messages
-            with open(self.fallback_files['chat_history'], 'w') as f:
+            with open(chat_history_file, 'w') as f:
                 json.dump(messages, f)
                 
         except Exception as e:
@@ -330,9 +343,18 @@ class Database:
     def _get_chat_memory_fallback(self, chat_id: int, memory_type: str, limit: Optional[int]) -> List[Dict]:
         """Fallback method to get chat memory using file storage"""
         try:
+            # Get account ID from chat ID (default to 1 if not found)
+            account_id = 1  # In fallback mode, we default to account 1
+            
+            # Use account-specific directory
+            account_dir = os.path.join(self.memory_dir, f"account_{account_id}")
+            chat_history_file = os.path.join(account_dir, "chat_history.json")
+            
             # Load existing messages
-            with open(self.fallback_files['chat_history'], 'r') as f:
-                all_messages = json.load(f)
+            all_messages = []
+            if os.path.exists(chat_history_file):
+                with open(chat_history_file, 'r') as f:
+                    all_messages = json.load(f)
             
             # Filter messages by chat_id and memory_type
             filtered_messages = [
@@ -713,3 +735,50 @@ class Database:
     def is_in_fallback_mode(self) -> bool:
         """Check if database is operating in fallback mode"""
         return self.fallback_mode 
+
+    def migrate_legacy_files(self):
+        """Migrate files from root directory to account-specific directories"""
+        try:
+            # Files to migrate
+            legacy_files = {
+                'temporary_accounts.json': 'temporary_accounts.json',
+                'accounts.json': 'accounts.json',
+                'chat_history.json': 'chat_history.json',
+                'bot_rules.json': 'bot_rules.json',
+                'short_term.json': 'short_term.json',
+                'mid_term.json': 'mid_term.json',
+                'whole_history.json': 'whole_history.json',
+                'history_context.json': 'history_context.json'
+            }
+            
+            # Create account-specific directory
+            account_dir = os.path.join(self.memory_dir, "account_1")
+            os.makedirs(account_dir, exist_ok=True)
+            
+            # Migrate each file
+            for old_name, new_name in legacy_files.items():
+                old_path = os.path.join(self.memory_dir, old_name)
+                new_path = os.path.join(account_dir, new_name)
+                
+                if os.path.exists(old_path) and not os.path.exists(new_path):
+                    # Read old file
+                    try:
+                        with open(old_path, 'r') as f:
+                            data = json.load(f)
+                        
+                        # Save to new location
+                        with open(new_path, 'w') as f:
+                            json.dump(data, f, indent=2)
+                        
+                        # Rename old file to .migrated
+                        migrated_path = old_path + '.migrated'
+                        os.rename(old_path, migrated_path)
+                        
+                        logger.info(f"Migrated {old_name} to account-specific directory")
+                    except Exception as e:
+                        logger.error(f"Error migrating {old_name}: {e}")
+                        continue
+            
+            logger.info("✅ Legacy file migration completed")
+        except Exception as e:
+            logger.error(f"❌ Error during legacy file migration: {e}") 

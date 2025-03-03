@@ -39,12 +39,13 @@ class HybridMemoryManager:
             
         The manager sets up both database and file-based storage systems:
         1. Database connection through the provided Database instance
-        2. File-based backup system in the 'memory' directory
+        2. File-based backup system in account-specific directories
         3. Legacy file manager for backward compatibility
         """
         self.db = db
         # Initialize file manager with default account for fallback
         self.file_manager = MemoryManager(account_id=1, db=db)
+        # Base memory directory
         self.memory_dir = "memory"
         os.makedirs(self.memory_dir, exist_ok=True)
         
@@ -198,12 +199,13 @@ class HybridMemoryManager:
         except Exception as e:
             logger.error(f"Error migrating memory to database: {e}")
 
-    def _get_memory_file(self, memory_type: str) -> str:
+    def _get_memory_file(self, memory_type: str, account_id: int = 1) -> str:
         """
         Get the appropriate file path for a memory type.
         
         Args:
             memory_type: Type of memory to get path for
+            account_id: Account ID for account-specific storage
             
         Returns:
             Path to the memory file
@@ -213,4 +215,9 @@ class HybridMemoryManager:
             'mid_term': 'mid_term.json',
             'whole_history': 'whole_history.json'
         }
-        return os.path.join(self.memory_dir, file_map.get(memory_type, 'short_term.json')) 
+        
+        # Use account-specific directory
+        account_dir = os.path.join(self.memory_dir, f"account_{account_id}")
+        os.makedirs(account_dir, exist_ok=True)
+        
+        return os.path.join(account_dir, file_map.get(memory_type, 'short_term.json')) 

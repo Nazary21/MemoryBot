@@ -92,16 +92,15 @@ class RuleManager:
             return self._get_rules_fallback(account_id)
         
     def _get_rules_fallback(self, account_id: int) -> List[Rule]:
-        """Get rules from files when database is not available"""
+        """Get rules from account-specific file storage when database is not available"""
         try:
-            # Set up paths for both old and new rule storage locations
+            # Only use account-specific directory
             account_dir = f"memory/account_{account_id}"
             account_rules_file = os.path.join(account_dir, "bot_rules.json")
-            old_rules_file = os.path.join("memory", "bot_rules.json")
             
             rules = []
             
-            # First, try to get rules from the account-specific directory
+            # Try to get rules from the account-specific directory
             if os.path.exists(account_rules_file):
                 with open(account_rules_file, 'r') as f:
                     try:
@@ -110,23 +109,16 @@ class RuleManager:
                         logger.error(f"Error reading rules from {account_rules_file}")
                         rules = []
             
-            # If no rules found, check the old location and migrate if needed
-            if not rules and os.path.exists(old_rules_file):
-                with open(old_rules_file, 'r') as f:
-                    try:
-                        old_rules = json.load(f)
-                        # Filter rules for this account
-                        rules = [rule for rule in old_rules if rule.get('account_id') == account_id]
-                        
-                        # If we found rules, migrate them to the new location
-                        if rules:
-                            os.makedirs(account_dir, exist_ok=True)
-                            with open(account_rules_file, 'w') as f:
-                                json.dump(rules, f, indent=2)
-                            logger.info(f"Migrated rules to account directory for account {account_id}")
-                    except json.JSONDecodeError:
-                        logger.error(f"Error reading rules from {old_rules_file}")
-                        rules = []
+            # If no rules found, create default rules
+            if not rules:
+                logger.info(f"No rules found for account {account_id}, creating defaults")
+                if self._create_default_rules_fallback(account_id):
+                    with open(account_rules_file, 'r') as f:
+                        try:
+                            rules = json.load(f)
+                        except json.JSONDecodeError:
+                            logger.error("Error reading newly created default rules")
+                            rules = []
             
             # Convert the rules to Rule objects
             return [Rule(
@@ -594,50 +586,21 @@ class RuleManager:
             logger.error(f"Migration error: {e}")
             return False
 
-    def _migrate_legacy_rules(self) -> None:
-        """Move rules from old location to account-specific directories
-        
-        This helps transition from the old way of storing all rules in one file
-        to the new way where each account has its own rules file."""
+    def _migrate_legacy_rules(self):
+        """Ensure account-specific rules directory exists with proper rules"""
         try:
-            # Check if old rules file exists
-            old_rules_file = os.path.join("memory", "bot_rules.json")
-            if not os.path.exists(old_rules_file):
+            account_dir = os.path.join("memory", f"account_1")
+            new_rules_file = os.path.join(account_dir, "bot_rules.json")
+
+            # If rules already exist, nothing to do
+            if os.path.exists(new_rules_file):
+                logger.info("Rules already exist in account directory")
                 return
-            
-            # Load all rules from old file
-            with open(old_rules_file, 'r') as f:
-                try:
-                    all_rules = json.load(f)
-                except json.JSONDecodeError:
-                    logger.error("Could not read old rules file")
-                    return
-            
-            # Group rules by account
-            rules_by_account = {}
-            for rule in all_rules:
-                account_id = rule.get('account_id', 1)  # Default to account 1 if not specified
-                if account_id not in rules_by_account:
-                    rules_by_account[account_id] = []
-                rules_by_account[account_id].append(rule)
-            
-            # Save rules to account-specific directories
-            for account_id, rules in rules_by_account.items():
-                # Create account directory
-                account_dir = f"memory/account_{account_id}"
-                os.makedirs(account_dir, exist_ok=True)
-                
-                # Save rules to account-specific file
-                account_rules_file = os.path.join(account_dir, "bot_rules.json")
-                with open(account_rules_file, 'w') as f:
-                    json.dump(rules, f, indent=2)
-                
-                logger.info(f"Migrated {len(rules)} rules to account {account_id}")
-            
-            # Rename old rules file to prevent re-processing
-            backup_file = os.path.join("memory", "bot_rules.json.migrated")
-            os.rename(old_rules_file, backup_file)
-            logger.info("Completed rules migration")
-            
+
+            # Create account directory and default rules
+            logger.info("Creating default rules in account directory")
+            self._create_default_rules_fallback(account_id=1)
         except Exception as e:
-            logger.error(f"Error migrating rules: {e}") 
+            logger.error(f"Error ensuring rules exist: {e}")
+            # Ensure default rules exist even if there's an error
+            self._create_default_rules_fallback(account_id=1) 
