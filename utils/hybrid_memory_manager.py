@@ -223,4 +223,17 @@ class HybridMemoryManager:
         account_dir = os.path.join(self.memory_dir, f"account_{account_id}")
         os.makedirs(account_dir, exist_ok=True)
         
-        return os.path.join(account_dir, file_map.get(memory_type, 'short_term.json')) 
+        return os.path.join(account_dir, file_map.get(memory_type, 'short_term.json'))
+
+    def get_history_context(self) -> str:
+        """
+        Get historical context summary using file manager fallback.
+        
+        Returns:
+            String containing the formatted history context
+        """
+        try:
+            return self.file_manager.get_history_context()
+        except Exception as e:
+            logger.error(f"Error getting history context: {e}")
+            return "Error retrieving history context." 
