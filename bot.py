@@ -348,27 +348,66 @@ async def whole_history_command(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("Error retrieving whole history stats")
 
 async def history_context_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display or initialize history context"""
     try:
         chat_id = update.effective_chat.id
+        logger.info(f"Processing history context command for chat {chat_id}")
+        
+        # Get memory manager for this chat
         memory_manager = await get_memory_manager(chat_id)
         
-        # Get history context first
+        # Get initial history context
         history_context = memory_manager.get_history_context()
+        logger.info(f"Initial history context: {history_context}")
         
-        # If empty or only contains initialization message, generate new context
-        if not history_context or (len(history_context.split('\n')) == 1 and "initialized" in history_context):
-            logger.info("History context empty or only initialized, generating new context...")
-            await analyze_whole_history()
-            history_context = memory_manager.get_history_context()
-        
-        if not history_context:
-            await update.message.reply_text("Error: Could not generate history context")
-            return
+        # If empty or only initialization message, generate new context
+        if not history_context or history_context == "Error retrieving history context." or "Chat history initialized" in history_context:
+            await update.message.reply_text("📝 Generating history context... This may take a moment.")
+            logger.info("History context empty or needs update, generating new context...")
             
-        await update.message.reply_text(f"📝 History Context:\n\n{history_context}")
+            # Analyze history to generate context
+            try:
+                context_data = await analyze_whole_history()
+                logger.info("History analysis completed")
+                
+                if not context_data:
+                    await update.message.reply_text("❌ Error: Could not generate history context. Please try again later.")
+                    return
+                
+                # Get updated context after analysis
+                history_context = context_data.get('summary')
+                logger.info(f"Generated new history context")
+                
+                if not history_context:
+                    await update.message.reply_text("❌ Error: Generated context was empty. Please try again later.")
+                    return
+                    
+                await update.message.reply_text("✅ History context generated successfully!")
+                
+            except Exception as analyze_error:
+                logger.error(f"Error analyzing history: {analyze_error}")
+                await update.message.reply_text("❌ Error generating history context. Please try again later.")
+                return
+        
+        # Format and send the context
+        formatted_context = (
+            "📝 History Context\n"
+            "================\n\n"
+            f"{history_context}\n\n"
+            "Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        )
+        
+        # Split message if too long
+        if len(formatted_context) > 4000:
+            parts = [formatted_context[i:i+4000] for i in range(0, len(formatted_context), 4000)]
+            for i, part in enumerate(parts, 1):
+                await update.message.reply_text(f"Part {i}/{len(parts)}:\n\n{part}")
+        else:
+            await update.message.reply_text(formatted_context)
+        
     except Exception as e:
         logger.error(f"Error in history_context_command: {e}", exc_info=True)
-        await update.message.reply_text("Error retrieving history context")
+        await update.message.reply_text("❌ Error retrieving history context. Please try again later.")
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display current bot rules"""
