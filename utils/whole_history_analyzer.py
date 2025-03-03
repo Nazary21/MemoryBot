@@ -1,6 +1,8 @@
 import json
 from datetime import datetime
 import asyncio
+import os
+import logging
 from config.settings import (
     WHOLE_HISTORY_FILE,
     HISTORY_CONTEXT_FILE
@@ -8,21 +10,23 @@ from config.settings import (
 from openai import OpenAI
 from config.settings import OPENAI_API_KEY
 
+logger = logging.getLogger(__name__)
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-async def analyze_whole_history():
+async def analyze_whole_history(memory_manager):
     """
     Analyze entire conversation history and update history context.
+    Args:
+        memory_manager: Instance of MemoryManager or HybridMemoryManager
     Returns:
         dict: The generated context summary if successful, None if failed
     """
     try:
-        # Load whole history
-        with open(WHOLE_HISTORY_FILE, 'r') as f:
-            whole_history = json.load(f)
+        # Load whole history using memory manager
+        whole_history = memory_manager._load_memory(memory_manager.whole_history_file)
         
         if not whole_history:
-            print("No history to analyze")
+            logger.info("No history to analyze")
             return None
         
         # Prepare conversation history for analysis
@@ -33,7 +37,7 @@ async def analyze_whole_history():
         ])
         
         if not history_text.strip():
-            print("No valid messages found in history")
+            logger.info("No valid messages found in history")
             return None
 
         # Get GPT-4 to analyze the entire history
@@ -81,7 +85,7 @@ async def analyze_whole_history():
         global_summary = response.choices[0].message.content
         
         if not global_summary or len(global_summary.strip()) < 50:
-            print("Generated summary is too short or empty")
+            logger.info("Generated summary is too short or empty")
             return None
             
         context_data = {
@@ -91,19 +95,19 @@ async def analyze_whole_history():
             "message_count": len(whole_history)
         }
         
-        # Update history context with new global summary
-        with open(HISTORY_CONTEXT_FILE, 'w') as f:
-            json.dump([context_data], f, indent=4)
+        # Update history context using memory manager
+        memory_manager._save_memory(memory_manager.history_file, [context_data])
+        logger.info(f"Updated history context for account {memory_manager.account_id}")
             
         return context_data
             
     except Exception as e:
-        print(f"Error analyzing whole history: {str(e)}")
+        logger.error(f"Error analyzing whole history: {str(e)}")
         return None
 
-async def periodic_history_analysis():
+async def periodic_history_analysis(memory_manager):
     """Run whole history analysis periodically"""
     while True:
-        await analyze_whole_history()
+        await analyze_whole_history(memory_manager)
         # Wait for 24 hours before next analysis
         await asyncio.sleep(24 * 3600) 

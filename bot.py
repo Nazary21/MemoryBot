@@ -122,8 +122,10 @@ async def startup_event():
         if init_success:
             # Start background tasks only if initialization successful
             logger.info("Starting background tasks...")
+            # Get default memory manager for system tasks
+            system_memory = await get_memory_manager(1)  # Use chat_id 1 for system
             asyncio.create_task(update_history_context())
-            asyncio.create_task(periodic_history_analysis())
+            asyncio.create_task(periodic_history_analysis(system_memory))
             logger.info("Background tasks started")
         else:
             logger.error("Application initialization failed")
@@ -367,7 +369,7 @@ async def history_context_command(update: Update, context: ContextTypes.DEFAULT_
             
             # Analyze history to generate context
             try:
-                context_data = await analyze_whole_history()
+                context_data = await analyze_whole_history(memory_manager)
                 logger.info("History analysis completed")
                 
                 if not context_data:
