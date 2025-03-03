@@ -222,17 +222,20 @@ class Database:
             # Look for existing account
             for account in accounts:
                 if account.get('telegram_chat_id') == chat_id:
+                    # Override the account ID to always be 1 in fallback mode
+                    account['id'] = 1
                     return account
             
-            # Create new account
+            # Create new account - always use ID 1 in fallback mode
             new_account = {
-                'id': len(accounts) + 1,
+                'id': 1,  # Always use ID 1 in fallback mode
                 'telegram_chat_id': chat_id,
                 'created_at': datetime.now().isoformat(),
                 'expires_at': (datetime.now() + timedelta(days=30)).isoformat()
             }
             
-            accounts.append(new_account)
+            # In fallback mode, we replace any existing accounts
+            accounts = [new_account]
             
             # Save updated accounts
             with open(self.fallback_files['temporary_accounts'], 'w') as f:
@@ -241,7 +244,7 @@ class Database:
             return new_account
         except Exception as e:
             logger.error(f"Error in fallback temporary account creation: {e}")
-            # Return minimal account to prevent further errors
+            # Return minimal account with ID 1
             return {
                 'id': 1,
                 'telegram_chat_id': chat_id

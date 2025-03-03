@@ -152,9 +152,6 @@ rule_manager = RuleManager(db)
 ai_handler = AIResponseHandler(db)
 registration_handler = RegistrationHandler(db)
 
-# Initialize Memory Manager with default account
-memory_manager = MemoryManager(account_id=1, db=db)
-
 # Add these variables after imports
 DEFAULT_SESSION = 6 * 3600  # 6 hours
 session_durations = {
@@ -425,7 +422,8 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Get or create account for this chat
         account = await db.get_or_create_temporary_account(chat_id)
-        account_id = account.get('id', 1)  # Default to 1 if not found
+        # Always use account 1 in fallback mode
+        account_id = 1 if db.fallback_mode else account.get('id', 1)
         debug_log(chat_id, "message_handler", f"Using account_id: {account_id}")
         
         # Get rules for this account
@@ -568,26 +566,16 @@ Previous conversation history context:
 async def get_memory_manager(chat_id: int) -> HybridMemoryManager:
     """Get or create a memory manager for a chat"""
     try:
-        # Initialize database connection if not already initialized
-        if not hasattr(get_memory_manager, '_db'):
-            get_memory_manager._db = Database()
-            
-            # Log the mode we're operating in
-            if get_memory_manager._db.fallback_mode:
-                logger.info("Operating in file-based fallback mode")
-            else:
-                logger.info("Operating with Supabase database")
-        
         # Get or create account for this chat
-        account = await get_memory_manager._db.get_or_create_temporary_account(chat_id)
-        account_id = account.get('id', 1)  # Fallback to 1 if not found
+        account = await db.get_or_create_temporary_account(chat_id)
+        account_id = account.get('id', 1)  # Default to 1 if not found
         
-        # Create hybrid memory manager with the correct account ID
-        return HybridMemoryManager(get_memory_manager._db, account_id=account_id)
+        # Create a new hybrid memory manager with the correct account ID
+        return HybridMemoryManager(db=db, account_id=account_id)
     except Exception as e:
         logger.error(f"Error creating memory manager: {e}")
-        # Create a new Database instance that will automatically use fallback mode
-        return HybridMemoryManager(Database(), account_id=1)  # Use default account for error cases
+        # Return default memory manager as fallback
+        return hybrid_memory
 
 # Test endpoint for OpenAI
 @app.get("/test_openai")
