@@ -307,20 +307,27 @@ async def add_rule(
     rule_text: str = Form(...),
     category: str = Form(...),
     priority: int = Form(0),
-    username: str = Depends(verify_credentials)
+    username: str = Depends(verify_credentials),
+    db: Database = Depends()
 ):
     """Add a new GPT rule"""
     try:
         logger.info(f"Adding new rule: '{rule_text}' in category '{category}' with priority {priority}")
         
-        # Use default account_id=1
-        account_id = 1
+        # Get the first chat_id associated with this username
+        # This is temporary until we have proper user-account mapping
+        account = await db.get_or_create_temporary_account(1)  # Using 1 as default chat_id for dashboard
+        account_id = account.get('id', 1)
         
         # Add rule using the async method
         rule = await rule_manager.add_rule(account_id, rule_text, category, priority)
         
         if rule:
             logger.info(f"Rule added successfully: {rule.text}")
+            
+            # Also add to account 1 to maintain backward compatibility
+            if account_id != 1:
+                await rule_manager.add_rule(1, rule_text, category, priority)
         else:
             logger.error("Failed to add rule")
             

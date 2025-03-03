@@ -66,12 +66,37 @@ class RuleManager:
             # Ensure database schema is up to date
             await self._migrate_add_category_column()
                 
+            # Get account-specific rules
             result = await self.db.supabase.from_('bot_rules').select(
                 '*'
             ).eq('account_id', account_id).eq('is_active', True).order('priority', desc=True).execute()
             
-            # If no rules found, create default rules
-            if not result.data:
+            rules = []
+            
+            # If this isn't account 1, also get global rules from account 1
+            if account_id != 1:
+                global_result = await self.db.supabase.from_('bot_rules').select(
+                    '*'
+                ).eq('account_id', 1).eq('is_active', True).order('priority', desc=True).execute()
+                
+                # Add global rules first (they have lower priority)
+                rules.extend([Rule(
+                    text=rule['rule_text'],
+                    priority=rule['priority'],
+                    is_active=rule['is_active'],
+                    category=rule.get('category', 'General')
+                ) for rule in global_result.data])
+            
+            # Add account-specific rules (they have higher priority)
+            rules.extend([Rule(
+                text=rule['rule_text'],
+                priority=rule['priority'],
+                is_active=rule['is_active'],
+                category=rule.get('category', 'General')
+            ) for rule in result.data])
+            
+            # If no rules found at all, create default rules
+            if not rules:
                 logger.info(f"No rules found for account {account_id}. Creating default rules.")
                 await self.create_default_rules(account_id)
                 
@@ -79,13 +104,15 @@ class RuleManager:
                 result = await self.db.supabase.from_('bot_rules').select(
                     '*'
                 ).eq('account_id', account_id).eq('is_active', True).order('priority', desc=True).execute()
+                
+                rules = [Rule(
+                    text=rule['rule_text'],
+                    priority=rule['priority'],
+                    is_active=rule['is_active'],
+                    category=rule.get('category', 'General')
+                ) for rule in result.data]
             
-            return [Rule(
-                text=rule['rule_text'],
-                priority=rule['priority'],
-                is_active=rule['is_active'],
-                category=rule.get('category', 'General')  # Get category with fallback
-            ) for rule in result.data]
+            return rules
         except Exception as e:
             logger.error(f"Error getting rules: {e}")
             # Use file-based fallback
