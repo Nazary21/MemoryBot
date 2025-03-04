@@ -6,6 +6,7 @@ from utils.memory_manager import MemoryManager
 from utils.database import Database
 
 HISTORY_CONTEXT_FILE = "history_context.json"
+MEMORY_DIR = "memory"  # Base directory for memory storage
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +49,17 @@ class HybridMemoryManager:
         self.db = db
         # Use provided account_id or default to 1 for system-level fallback
         self.account_id = account_id if account_id is not None else 1
+        
+        # Set up memory directory
+        self.memory_dir = os.path.join(os.getcwd(), MEMORY_DIR)
+        os.makedirs(self.memory_dir, exist_ok=True)
+        
+        # Create account-specific directory
+        self.account_memory_dir = os.path.join(self.memory_dir, f"account_{self.account_id}")
+        os.makedirs(self.account_memory_dir, exist_ok=True)
+        
         # Initialize file manager with the correct account
         self.file_manager = MemoryManager(account_id=self.account_id, db=db)
-        # Base memory directory
-        self.memory_dir = "memory"
-        os.makedirs(self.memory_dir, exist_ok=True)
         
     async def get_memory(self, chat_id: int, memory_type: str) -> List[Dict]:
         """

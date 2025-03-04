@@ -17,6 +17,9 @@ from utils.database import Database
 from utils.ai_response import AIResponseHandler
 from utils.hybrid_memory_manager import HybridMemoryManager
 
+# Constants
+HISTORY_CONTEXT_FILE = "history_context.json"
+
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
@@ -433,6 +436,12 @@ async def memory_view(
         whole_history_stats = {"message_count": 0, "last_update": "No messages"}
         history_context_stats = {"entry_count": 0, "last_update": "No entries", "last_modified": "Never"}
         
+        # Initialize message lists
+        short_term = []
+        mid_term = []
+        whole_history = []
+        history_context = ""
+        
         try:
             # Get memory data with proper error handling
             short_term = await memory_manager.get_memory(account_id, 'short_term') or []
@@ -462,14 +471,21 @@ async def memory_view(
                 memory_status["whole_history"] = "active"
             
             # Get history context
-            history_context = memory_manager.get_history_context()
-            if history_context:
-                history_context_stats = {
-                    "entry_count": 1,
-                    "last_update": datetime.now().isoformat(),
-                    "last_modified": datetime.now().isoformat()
-                }
-                memory_status["history_context"] = "active"
+            history_context_path = os.path.join(memory_manager.account_memory_dir, HISTORY_CONTEXT_FILE)
+            if os.path.exists(history_context_path):
+                try:
+                    with open(history_context_path, 'r') as f:
+                        context_data = json.load(f)
+                        history_context = context_data.get('summary', '')
+                        history_context_stats = {
+                            "entry_count": 1,
+                            "last_update": context_data.get('timestamp', datetime.now().isoformat()),
+                            "last_modified": context_data.get('timestamp', datetime.now().isoformat())
+                        }
+                        memory_status["history_context"] = "active"
+                except Exception as e:
+                    logger.error(f"Error reading history context: {e}")
+                    memory_status["history_context"] = "failing"
             
         except Exception as memory_error:
             logger.error(f"Error retrieving memory data: {memory_error}")
@@ -487,7 +503,7 @@ async def memory_view(
                 "mid_term_stats": mid_term_stats,
                 "whole_history_stats": whole_history_stats,
                 "history_context_stats": history_context_stats,
-                "history_context": history_context or "",
+                "history_context": history_context,
                 "short_term_messages": short_term[-50:] if short_term else [],
                 "mid_term_messages": mid_term[-50:] if mid_term else [],
                 "dashboard_prefix": "/dashboard",
@@ -563,7 +579,7 @@ async def update_context(
             "total_messages": 0
         }
         
-        history_file = os.path.join(memory_manager.memory_dir, f"account_{account_id}", HISTORY_CONTEXT_FILE)
+        history_file = os.path.join(memory_manager.account_memory_dir, HISTORY_CONTEXT_FILE)
         os.makedirs(os.path.dirname(history_file), exist_ok=True)
         
         with open(history_file, 'w') as f:
