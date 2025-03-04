@@ -1,45 +1,52 @@
-{% extends "base.html" %}
-
-{% block body %}
-<div class="min-h-screen bg-gray-100">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
     <!-- Navigation -->
-    <nav class="bg-white shadow">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav class="bg-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4">
             <div class="flex justify-between h-16">
                 <div class="flex">
                     <div class="flex-shrink-0 flex items-center">
-                        <h1 class="text-xl font-bold">PykhBrain Dashboard</h1>
+                        <span class="text-xl font-bold">Bot Dashboard</span>
                     </div>
                     <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
-                        <a href="/dashboard" class="nav-link {% if active_page == 'overview' %}active{% endif %}">
-                            Overview
+                        <a href="{{ dashboard_prefix }}/" 
+                           class="{{ 'border-indigo-500 text-gray-900' if active_page == 'dashboard' else 'border-transparent text-gray-500' }} hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Dashboard
                         </a>
-                        <a href="/dashboard/memory" class="nav-link {% if active_page == 'memory' %}active{% endif %}">
+                        <a href="{{ dashboard_prefix }}/memory"
+                           class="{{ 'border-indigo-500 text-gray-900' if active_page == 'memory' else 'border-transparent text-gray-500' }} hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                             Memory
                         </a>
-                        <a href="/dashboard/settings" class="nav-link {% if active_page == 'settings' %}active{% endif %}">
-                            Settings
-                        </a>
-                        {% if user.is_admin %}
-                        <a href="/dashboard/admin" class="nav-link {% if active_page == 'admin' %}active{% endif %}">
-                            Admin
-                        </a>
-                        {% endif %}
                     </div>
                 </div>
-                <div class="flex items-center">
-                    <span class="text-gray-500 mr-4">{{ user.email }}</span>
-                    <form action="/auth/logout" method="POST" class="inline">
-                        <button type="submit" class="text-red-600 hover:text-red-800">Logout</button>
-                    </form>
+                <div class="hidden sm:ml-6 sm:flex sm:items-center">
+                    <div class="ml-3 relative">
+                        <div class="text-gray-600">
+                            <span>{{ username }}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </nav>
 
-    <!-- Main Content -->
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {% block dashboard_content %}{% endblock %}
-    </main>
-</div>
-{% endblock %} 
+    <!-- Page Content -->
+    {% block content %}{% endblock %}
+
+    <!-- Footer -->
+    <footer class="bg-white shadow mt-8 py-4">
+        <div class="max-w-7xl mx-auto px-4">
+            <p class="text-center text-gray-500 text-sm">
+                Bot Dashboard &copy; {{ year }}
+            </p>
+        </div>
+    </footer>
+</body>
+</html> 
