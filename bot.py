@@ -358,7 +358,7 @@ async def history_context_command(update: Update, context: ContextTypes.DEFAULT_
         # Get memory manager for this chat
         memory_manager = await get_memory_manager(chat_id)
         
-        # Get initial history context directly from hybrid memory manager
+        # Get initial history context
         history_context = memory_manager.get_history_context()
         logger.info(f"Initial history context: {history_context}")
         
@@ -372,29 +372,25 @@ async def history_context_command(update: Update, context: ContextTypes.DEFAULT_
                 from utils.whole_history_analyzer import analyze_whole_history
                 context_data = await analyze_whole_history(memory_manager)
                 
-                if context_data and context_data.get('summary'):
-                    history_context = context_data['summary']
-                    await update.message.reply_text("✅ History context generated successfully!")
+                if context_data:
+                    history_context = context_data.get('summary', '')
+                    await update.message.reply_text(f"📊 History Context:\n\n{history_context}")
                 else:
                     await update.message.reply_text("❌ No significant history to analyze.")
-                    return
-                    
-            except Exception as analysis_error:
-                logger.error(f"Error analyzing history: {analysis_error}")
-                await update.message.reply_text("❌ Error generating history context. Please try again later.")
-                return
-        
-        # Split long messages if needed
-        if len(history_context) > 4000:
-            chunks = [history_context[i:i+4000] for i in range(0, len(history_context), 4000)]
-            for i, chunk in enumerate(chunks, 1):
-                await update.message.reply_text(f"📚 History Context (Part {i}/{len(chunks)}):\n\n{chunk}")
+            except Exception as e:
+                logger.error(f"Error analyzing history: {e}")
+                await update.message.reply_text("❌ Error generating history context.")
         else:
-            await update.message.reply_text(f"📚 History Context:\n\n{history_context}")
-            
+            # Split long messages if needed
+            if len(history_context) > 4000:
+                chunks = [history_context[i:i+4000] for i in range(0, len(history_context), 4000)]
+                for i, chunk in enumerate(chunks, 1):
+                    await update.message.reply_text(f"📊 History Context (Part {i}/{len(chunks)}):\n\n{chunk}")
+            else:
+                await update.message.reply_text(f"📊 History Context:\n\n{history_context}")
     except Exception as e:
         logger.error(f"Error in history_context_command: {e}", exc_info=True)
-        await update.message.reply_text("❌ Error retrieving history context. Please try again later.")
+        await update.message.reply_text("❌ Error retrieving history context.")
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display current bot rules"""
