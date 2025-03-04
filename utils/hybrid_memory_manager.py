@@ -4,13 +4,10 @@ import os
 from typing import Dict, List, Optional, Any
 from utils.memory_manager import MemoryManager
 from utils.database import Database
-from datetime import datetime
 
-# Setup logging
-logger = logging.getLogger(__name__)
-
-# Constants
 HISTORY_CONTEXT_FILE = "history_context.json"
+
+logger = logging.getLogger(__name__)
 
 class HybridMemoryManager:
     """
@@ -42,44 +39,21 @@ class HybridMemoryManager:
         Args:
             db: Database instance for primary storage
             account_id: Optional account ID for file storage (defaults to 1 for system-level fallback)
+            
+        The manager sets up both database and file-based storage systems:
+        1. Database connection through the provided Database instance
+        2. File-based backup system in account-specific directories
+        3. Legacy file manager for backward compatibility
         """
         self.db = db
         # Use provided account_id or default to 1 for system-level fallback
         self.account_id = account_id if account_id is not None else 1
-        
+        # Initialize file manager with the correct account
+        self.file_manager = MemoryManager(account_id=self.account_id, db=db)
         # Base memory directory
         self.memory_dir = "memory"
         os.makedirs(self.memory_dir, exist_ok=True)
         
-        # Account-specific directory
-        self.account_dir = os.path.join(self.memory_dir, f"account_{self.account_id}")
-        os.makedirs(self.account_dir, exist_ok=True)
-        
-        # Initialize all required files
-        self.memory_files = {
-            'short_term': os.path.join(self.account_dir, "short_term.json"),
-            'mid_term': os.path.join(self.account_dir, "mid_term.json"),
-            'whole_history': os.path.join(self.account_dir, "whole_history.json"),
-            'history_context': os.path.join(self.account_dir, HISTORY_CONTEXT_FILE)
-        }
-        
-        # Ensure all files exist with proper structure
-        self._ensure_memory_files()
-        
-        # Initialize file manager with the correct account
-        self.file_manager = MemoryManager(account_id=self.account_id, db=db)
-
-    def _ensure_memory_files(self):
-        """Ensure all memory files exist with proper structure"""
-        try:
-            for file_path in self.memory_files.values():
-                if not os.path.exists(file_path):
-                    with open(file_path, 'w') as f:
-                        json.dump([], f)
-                    logger.info(f"Created memory file: {file_path}")
-        except Exception as e:
-            logger.error(f"Error ensuring memory files: {e}")
-
     async def get_memory(self, chat_id: int, memory_type: str) -> List[Dict]:
         """
         Retrieve memory of a specific type with automatic fallback.
@@ -261,32 +235,31 @@ class HybridMemoryManager:
             String containing the formatted history context
         """
         try:
-            history_file = self.memory_files['history_context']
+            history_file = os.path.join(self.memory_dir, f"account_{self.account_id}", HISTORY_CONTEXT_FILE)
             
             if not os.path.exists(history_file):
                 logger.info(f"No history context file found for account {self.account_id}")
-                return "No history context available yet."
+                return ""
                 
             with open(history_file, 'r') as f:
                 context_data = json.load(f)
                 
-            if not context_data or not isinstance(context_data, list):
-                logger.info("History context file is empty or invalid")
-                return "No significant history to analyze."
+            if not context_data:
+                logger.info("History context file is empty")
+                return ""
                 
-            # Format context entries with timestamps
-            formatted_entries = []
-            for entry in context_data:
-                timestamp = entry.get("timestamp", "")
-                summary = entry.get("summary", "")
-                category = entry.get("category", "general")
-                if timestamp and summary:
-                    formatted_entries.append(f"[{timestamp}] ({category}) {summary}")
-                else:
-                    formatted_entries.append(summary)
-            
-            return "\n".join(formatted_entries) if formatted_entries else "No significant history to analyze."
+            # Handle both array and single entry formats
+            if isinstance(context_data, list):
+                if len(context_data) == 0:
+                    return ""
+                latest_context = context_data[0]
+                return latest_context.get('summary', '')
+            elif isinstance(context_data, dict):
+                return context_data.get('summary', '')
+            else:
+                logger.warning("Invalid history context format")
+                return ""
                 
         except Exception as e:
-            logger.error(f"Error getting history context: {e}", exc_info=True)
-            return "Error retrieving history context." 
+            logger.error(f"Error getting history context: {e}")
+            return "" 

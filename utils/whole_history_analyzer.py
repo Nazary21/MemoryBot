@@ -142,7 +142,7 @@ async def analyze_whole_history(memory_manager) -> Optional[Dict]:
         os.makedirs(os.path.dirname(history_file), exist_ok=True)
         
         with open(history_file, 'w') as f:
-            json.dump([context_data], f, indent=2)
+            json.dump(context_data, f, indent=2)  # Save as single object, not array
             
         logger.info(f"Updated history context for account {memory_manager.account_id} with {len(valid_messages)} messages (analyzed last {min(100, len(valid_messages))})")
             
