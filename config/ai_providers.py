@@ -71,7 +71,24 @@ class AIProviderManager:
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r') as f:
                     stored_config = json.load(f)
+                    # Load active provider
                     self.config["active_provider"] = stored_config.get("active_provider", self.config["active_provider"])
+                    
+                    # Load provider configurations (except API keys)
+                    if "providers" in stored_config:
+                        for name, info in stored_config["providers"].items():
+                            if name in self.config["providers"]:
+                                # Update non-sensitive settings
+                                for key, value in info.items():
+                                    if key != "api_key":
+                                        self.config["providers"][name][key] = value
+                    
+                    # Always get API keys from environment
+                    for name in self.config["providers"]:
+                        env_key = os.getenv(f"{name.upper()}_API_KEY")
+                        if env_key:
+                            self.config["providers"][name]["api_key"] = env_key
+                    
                     logger.info(f"Loaded config, active provider: {self.config['active_provider']}")
         except Exception as e:
             logger.error(f"Error loading config: {e}")
@@ -81,7 +98,17 @@ class AIProviderManager:
         try:
             os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
             with open(self.config_file, 'w') as f:
-                json.dump({"active_provider": self.config["active_provider"]}, f, indent=2)
+                # Save full configuration including providers
+                json.dump({
+                    "active_provider": self.config["active_provider"],
+                    "providers": {
+                        name: {
+                            k: v for k, v in info.items() 
+                            if k != "api_key"  # Don't save API keys to file
+                        }
+                        for name, info in self.config["providers"].items()
+                    }
+                }, f, indent=2)
             logger.info(f"Saved config with active provider: {self.config['active_provider']}")
         except Exception as e:
             logger.error(f"Error saving config: {e}")
@@ -135,6 +162,10 @@ class AIProviderManager:
             
             # Update provider config
             self.config["providers"][provider]["api_key"] = api_key
+            
+            # Save the updated configuration
+            self._save_config()
+            
             logger.info(f"Updated {provider} configuration")
             return True
         except Exception as e:
