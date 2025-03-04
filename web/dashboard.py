@@ -419,51 +419,64 @@ async def memory_view(
         account_id = 1
         memory_manager = HybridMemoryManager(db, account_id)
         
-        # Get memory status
+        # Initialize memory status
         memory_status = {
-            "short_term": "active",
-            "mid_term": "active",
-            "whole_history": "active",
-            "history_context": "active"
+            "short_term": "initializing",
+            "mid_term": "initializing",
+            "whole_history": "initializing",
+            "history_context": "initializing"
         }
         
-        # Get memory stats
-        short_term = await memory_manager.get_memory(account_id, 'short_term')
-        mid_term = await memory_manager.get_memory(account_id, 'mid_term')
-        whole_history = await memory_manager.get_memory(account_id, 'whole_history')
+        # Initialize stats with default values
+        short_term_stats = {"message_count": 0, "last_update": "No messages"}
+        mid_term_stats = {"message_count": 0, "last_update": "No messages"}
+        whole_history_stats = {"message_count": 0, "last_update": "No messages"}
+        history_context_stats = {"entry_count": 0, "last_update": "No entries", "last_modified": "Never"}
         
-        short_term_stats = {
-            "message_count": len(short_term),
-            "last_update": short_term[-1]['timestamp'] if short_term else "No messages"
-        }
-        
-        mid_term_stats = {
-            "message_count": len(mid_term),
-            "last_update": mid_term[-1]['timestamp'] if mid_term else "No messages"
-        }
-        
-        whole_history_stats = {
-            "message_count": len(whole_history),
-            "last_update": whole_history[-1]['timestamp'] if whole_history else "No messages"
-        }
-        
-        # Get history context
-        history_context = memory_manager.get_history_context()
-        history_context_stats = {
-            "entry_count": 1 if history_context else 0,
-            "last_update": datetime.now().isoformat(),
-            "last_modified": datetime.now().isoformat()
-        }
-        
-        # Update status based on checks
-        if not short_term:
-            memory_status["short_term"] = "failing"
-        if not mid_term:
-            memory_status["mid_term"] = "failing"
-        if not whole_history:
-            memory_status["whole_history"] = "failing"
-        if not history_context:
-            memory_status["history_context"] = "failing"
+        try:
+            # Get memory data with proper error handling
+            short_term = await memory_manager.get_memory(account_id, 'short_term') or []
+            mid_term = await memory_manager.get_memory(account_id, 'mid_term') or []
+            whole_history = await memory_manager.get_memory(account_id, 'whole_history') or []
+            
+            # Update stats if we have data
+            if short_term:
+                short_term_stats = {
+                    "message_count": len(short_term),
+                    "last_update": short_term[-1].get('timestamp', 'Unknown') if short_term else "No messages"
+                }
+                memory_status["short_term"] = "active"
+            
+            if mid_term:
+                mid_term_stats = {
+                    "message_count": len(mid_term),
+                    "last_update": mid_term[-1].get('timestamp', 'Unknown') if mid_term else "No messages"
+                }
+                memory_status["mid_term"] = "active"
+            
+            if whole_history:
+                whole_history_stats = {
+                    "message_count": len(whole_history),
+                    "last_update": whole_history[-1].get('timestamp', 'Unknown') if whole_history else "No messages"
+                }
+                memory_status["whole_history"] = "active"
+            
+            # Get history context
+            history_context = memory_manager.get_history_context()
+            if history_context:
+                history_context_stats = {
+                    "entry_count": 1,
+                    "last_update": datetime.now().isoformat(),
+                    "last_modified": datetime.now().isoformat()
+                }
+                memory_status["history_context"] = "active"
+            
+        except Exception as memory_error:
+            logger.error(f"Error retrieving memory data: {memory_error}")
+            # Mark failing components in status
+            for component in memory_status:
+                if memory_status[component] == "initializing":
+                    memory_status[component] = "failing"
         
         return templates.TemplateResponse(
             "dashboard/memory_dashboard.html",
@@ -474,9 +487,9 @@ async def memory_view(
                 "mid_term_stats": mid_term_stats,
                 "whole_history_stats": whole_history_stats,
                 "history_context_stats": history_context_stats,
-                "history_context": history_context,
-                "short_term_messages": short_term[-50:],
-                "mid_term_messages": mid_term[-50:],
+                "history_context": history_context or "",
+                "short_term_messages": short_term[-50:] if short_term else [],
+                "mid_term_messages": mid_term[-50:] if mid_term else [],
                 "dashboard_prefix": "/dashboard",
                 "active_page": "memory",
                 "username": auth_info["username"]
@@ -484,7 +497,29 @@ async def memory_view(
         )
     except Exception as e:
         logger.error(f"Error in memory view: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return a basic error response instead of raising an exception
+        return templates.TemplateResponse(
+            "dashboard/memory_dashboard.html",
+            {
+                "request": request,
+                "memory_status": {
+                    "short_term": "failing",
+                    "mid_term": "failing",
+                    "whole_history": "failing",
+                    "history_context": "failing"
+                },
+                "short_term_stats": {"message_count": 0, "last_update": "Error"},
+                "mid_term_stats": {"message_count": 0, "last_update": "Error"},
+                "whole_history_stats": {"message_count": 0, "last_update": "Error"},
+                "history_context_stats": {"entry_count": 0, "last_update": "Error", "last_modified": "Error"},
+                "history_context": "",
+                "short_term_messages": [],
+                "mid_term_messages": [],
+                "dashboard_prefix": "/dashboard",
+                "active_page": "memory",
+                "username": auth_info["username"]
+            }
+        )
 
 @router.post("/regenerate_context")
 async def regenerate_context(
