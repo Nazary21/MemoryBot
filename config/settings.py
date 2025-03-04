@@ -29,6 +29,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY not found in environment variables")
 
+# Mock Mode Configuration
+MOCK_MODE = os.getenv("MOCK_MODE", "false").lower() == "true"
+
 # Memory Configuration
 SESSION_DURATION = 6 * 3600  # 6 hours (default)
 MID_TERM_MESSAGE_LIMIT = 200
