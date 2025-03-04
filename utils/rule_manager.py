@@ -288,9 +288,12 @@ class RuleManager:
                 logger.warning("No rules provided for formatting")
                 return "No active rules found."
                 
-            # Group rules by category
+            # Group rules by category and only include active rules
             rules_by_category = {}
             for rule in rules:
+                if not rule.is_active:
+                    continue
+                    
                 category = getattr(rule, 'category', 'General')  # Default to General if no category
                 if category not in rules_by_category:
                     rules_by_category[category] = []

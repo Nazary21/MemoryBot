@@ -472,7 +472,7 @@ async def memory_view(
             if history_context:
                 memory_status["history_context"] = "active"
                 history_context_stats["entry_count"] = 1  # Since we're using single entry format
-                history_context_stats["last_update"] = "Context available"
+                history_context_stats["last_analysis"] = "Context available"
                 
                 # Try to get last modified time from file
                 try:
@@ -480,6 +480,20 @@ async def memory_view(
                     if os.path.exists(history_file):
                         mod_time = datetime.fromtimestamp(os.path.getmtime(history_file))
                         history_context_stats["last_modified"] = mod_time.strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        # Read the actual file to get more detailed stats
+                        with open(history_file, 'r') as f:
+                            context_data = json.load(f)
+                            
+                        # Handle both dictionary and array formats
+                        if isinstance(context_data, dict):
+                            history_context_stats["message_count"] = context_data.get("message_count", 0)
+                            history_context_stats["total_messages"] = context_data.get("total_messages", 0)
+                            history_context_stats["last_analysis"] = context_data.get("timestamp", "Unknown")
+                        elif isinstance(context_data, list) and len(context_data) > 0:
+                            history_context_stats["entry_count"] = len(context_data)
+                            if isinstance(context_data[0], dict):
+                                history_context_stats["last_analysis"] = context_data[0].get("timestamp", "Unknown")
                 except Exception as e:
                     logger.error(f"Error getting history context file info: {e}")
             else:

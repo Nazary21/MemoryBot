@@ -535,10 +535,8 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             debug_log(chat_id, "Rules formatted", f"Rules text length: {len(rules_text)}")
             
             # Prepare messages for AI with rules and history context
-            system_message = f"""Follow these rules strictly, they define your core identity and behavior:
+            system_message = f"""Follow these rules strictly they define your core identity and behavior:
 {rules_text}
-
-Remember: These rules define who you are - especially your personality and character traits. Embody them in every response.
 
 Previous conversation history context:
 {history_context}"""
@@ -581,8 +579,22 @@ Previous conversation history context:
             # Attempt basic fallback without context
             try:
                 debug_log(chat_id, "Attempting fallback")
+                
+                # Try to get rules again
+                fallback_rules = rule_manager._get_rules_fallback(account_id=account_id)
+                fallback_rules_text = ""
+                if fallback_rules:
+                    fallback_rules_text = rule_manager.get_formatted_rules(fallback_rules)
+                    debug_log(chat_id, "Fallback rules retrieved", f"Rules text length: {len(fallback_rules_text)}")
+                
+                system_content = "Follow the rules below."
+                if fallback_rules_text:
+                    system_content = f"Follow these rules:\n{fallback_rules_text}"
+                else:
+                    debug_log(chat_id, "No fallback rules available", "Using minimal system content")
+                
                 response_text = await ai_handler.get_chat_response(account_id=account_id, messages=[
-                    {"role": "system", "content": "You are a helpful assistant. Be concise and friendly."},
+                    {"role": "system", "content": system_content},
                     {"role": "user", "content": user_input}
                 ])
                 debug_log(chat_id, "Fallback successful")
