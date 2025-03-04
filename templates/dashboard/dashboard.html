@@ -1,207 +1,199 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bot Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-</head>
-<body class="bg-gray-100">
-    <div class="container mx-auto px-4 py-8">
-        <!-- Default credentials warning -->
-        {% if using_default_auth %}
-        <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4" role="alert">
-            <p class="font-bold">Warning: Using Default Credentials</p>
-            <p>You are currently using default dashboard credentials. For security, please set DASHBOARD_USERNAME and DASHBOARD_PASSWORD environment variables.</p>
-        </div>
-        {% endif %}
+{% extends "dashboard/base.html" %}
 
-        <!-- Database fallback mode warning -->
-        {% if fallback_mode %}
-        <div class="bg-orange-100 border-l-4 border-orange-500 text-orange-700 p-4 mb-4" role="alert">
-            <p class="font-bold">Operating in Fallback Mode</p>
-            <p>Database connection is unavailable. The system is currently using file-based storage as a fallback. Some features may be limited.</p>
-        </div>
-        {% endif %}
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Default credentials warning -->
+    {% if using_default_auth %}
+    <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4" role="alert">
+        <p class="font-bold">Warning: Using Default Credentials</p>
+        <p>You are currently using default dashboard credentials. For security, please set DASHBOARD_USERNAME and DASHBOARD_PASSWORD environment variables.</p>
+    </div>
+    {% endif %}
 
-        <!-- User Info -->
-        <div class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold">Bot Dashboard</h1>
-            <div class="text-gray-600">
-                <div>Logged in as: <span class="font-semibold">{{ username }}</span></div>
-                <div class="text-sm">Account ID: <span class="font-mono bg-gray-100 px-2 py-1 rounded">{{ account_id }}</span></div>
-            </div>
-        </div>
+    <!-- Database fallback mode warning -->
+    {% if fallback_mode %}
+    <div class="bg-orange-100 border-l-4 border-orange-500 text-orange-700 p-4 mb-4" role="alert">
+        <p class="font-bold">Operating in Fallback Mode</p>
+        <p>Database connection is unavailable. The system is currently using file-based storage as a fallback. Some features may be limited.</p>
+    </div>
+    {% endif %}
 
-        <!-- Status Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            <!-- Telegram Status -->
-            <div class="bg-white rounded-lg shadow p-6">
-                <h2 class="text-xl font-semibold mb-4">Telegram Status</h2>
-                <div class="flex items-center">
-                    <div class="w-3 h-3 rounded-full {{ 'bg-green-500' if telegram_status else 'bg-red-500' }} mr-2"></div>
-                    <span>{{ telegram_status_message }}</span>
-                </div>
-            </div>
-
-            <!-- AI Provider Status -->
-            <div class="bg-white rounded-lg shadow p-6">
-                <h2 class="text-xl font-semibold mb-4">AI Provider Status</h2>
-                <div class="flex items-center">
-                    <div class="w-3 h-3 rounded-full {{ 'bg-green-500' if openai_status else 'bg-red-500' }} mr-2"></div>
-                    <span>{{ openai_status_message }}</span>
-                </div>
-            </div>
-
-            <!-- Database Status -->
-            <div class="bg-white rounded-lg shadow p-6">
-                <h2 class="text-xl font-semibold mb-4">Database Status</h2>
-                <div class="flex items-center">
-                    <div class="w-3 h-3 rounded-full {{ 'bg-green-500' if database_status else 'bg-red-500' }} mr-2"></div>
-                    <span>{{ database_status_message }}</span>
-                </div>
-                {% if fallback_mode %}
-                <div class="mt-2 text-sm text-orange-600">
-                    <p>Using file-based storage fallback</p>
-                </div>
-                {% endif %}
-            </div>
-
-            <!-- Memory Status -->
-            <div class="bg-white rounded-lg shadow p-6">
-                <h2 class="text-xl font-semibold mb-4">Memory Status</h2>
-                <p>Messages in memory: {{ message_count }}</p>
-                <p>Context entries: {{ context_count }}</p>
-            </div>
-        </div>
-
-        <!-- Recent Messages -->
-        <div class="bg-white rounded-lg shadow p-6 mb-8">
-            <h2 class="text-xl font-semibold mb-4">Recent Messages</h2>
-            <div class="space-y-4">
-                {% for message in recent_messages %}
-                <div class="border-l-4 {{ 'border-blue-500' if message.role == 'user' else 'border-green-500' }} pl-4">
-                    <p class="text-sm text-gray-600">{{ message.timestamp }}</p>
-                    <p class="font-semibold">{{ message.role|title }}</p>
-                    <p>{{ message.content }}</p>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-
-        <!-- API Configuration -->
-        <div class="bg-white rounded-lg shadow p-6 mb-8">
-            <h2 class="text-xl font-semibold mb-4">API Configuration</h2>
-            
-            <!-- AI Provider Selection -->
-            <form method="POST" action="{{ dashboard_prefix }}/set_provider" class="mb-6 space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">AI Provider</label>
-                    <select name="provider" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                        <option value="openai" {% if active_provider == "openai" %}selected{% endif %}>OpenAI (GPT-3.5)</option>
-                        <option value="grok" {% if active_provider == "grok" %}selected{% endif %}>Grok</option>
-                    </select>
-                </div>
-                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                    Switch Provider
-                </button>
-            </form>
-
-            <!-- Provider Settings -->
-            <div class="space-y-4">
-                <div class="flex items-center justify-between">
-                    <h3 class="text-lg font-medium">Current Provider: {{ provider_info.display_name }}</h3>
-                    <span class="px-2 py-1 text-sm rounded-full {% if provider_info.api_key %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}">
-                        {{ "Configured" if provider_info.api_key else "Not Configured" }}
-                    </span>
-                </div>
-                
-                <form method="POST" action="{{ dashboard_prefix }}/update_config" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">API Key</label>
-                        <input type="password" name="api_key" value="{{ provider_info.api_key }}" 
-                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Temperature (0-2)</label>
-                        <input type="number" name="temperature" value="{{ current_settings.temperature|default(0.7) }}" 
-                               min="0" max="2" step="0.1"
-                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                        <p class="mt-1 text-sm text-gray-500">Higher values (up to 2.0) make output more random and creative, lower values make it more focused and deterministic.</p>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Max Tokens (100-3000)</label>
-                        <input type="number" name="max_tokens" value="{{ current_settings.max_tokens|default(2000) }}"
-                               min="100" max="3000" step="100"
-                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                        <p class="mt-1 text-sm text-gray-500">Maximum length of the response.</p>
-                    </div>
-                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                        Update Configuration
-                    </button>
-                </form>
-            </div>
-        </div>
-
-        <!-- GPT Rules -->
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold mb-4">GPT Rules</h2>
-            
-            <!-- Add New Rule -->
-            <form method="POST" action="{{ dashboard_prefix }}/add_rule" class="mb-6 space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Rule Text</label>
-                    <textarea name="rule_text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" rows="3"></textarea>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Category</label>
-                    <select name="category" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                        <option value="Language">Language</option>
-                        <option value="Personalization">Personalization</option>
-                        <option value="Memory">Memory</option>
-                        <option value="Tone">Tone</option>
-                        <option value="Attitude/tone">Attitude/tone</option>
-                        <option value="General">General</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Priority</label>
-                    <input type="number" name="priority" value="0" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                </div>
-                <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
-                    Add Rule
-                </button>
-            </form>
-
-            <!-- Existing Rules -->
-            <div class="space-y-4">
-                {% for category, rules in rules_by_category.items() %}
-                <div class="border rounded-lg p-4">
-                    <h3 class="font-semibold text-lg mb-2">{{ category|title }}</h3>
-                    {% for rule in rules %}
-                    <div class="flex items-start justify-between py-2 border-t">
-                        <div class="flex-1">
-                            <p>{{ rule.text }}</p>
-                            <p class="text-sm text-gray-600">Priority: {{ rule.priority }}</p>
-                        </div>
-                        <form method="POST" action="{{ dashboard_prefix }}/remove_rule" class="ml-4">
-                            <input type="hidden" name="rule_index" value="{{ rule_indices[rule.text] }}">
-                            <button type="submit" class="text-red-500 hover:text-red-700">Remove</button>
-                        </form>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% endfor %}
-            </div>
+    <!-- User Info -->
+    <div class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold">Bot Dashboard</h1>
+        <div class="text-gray-600">
+            <div>Logged in as: <span class="font-semibold">{{ username }}</span></div>
+            <div class="text-sm">Account ID: <span class="font-mono bg-gray-100 px-2 py-1 rounded">{{ account_id }}</span></div>
         </div>
     </div>
 
-    <script>
-        // Add any JavaScript for interactivity here
-        function togglePassword(inputId) {
-            const input = document.getElementById(inputId);
-            input.type = input.type === 'password' ? 'text' : 'password';
-        }
-    </script>
-</body>
-</html> 
+    <!-- Status Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <!-- Telegram Status -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Telegram Status</h2>
+            <div class="flex items-center">
+                <div class="w-3 h-3 rounded-full {{ 'bg-green-500' if telegram_status else 'bg-red-500' }} mr-2"></div>
+                <span>{{ telegram_status_message }}</span>
+            </div>
+        </div>
+
+        <!-- AI Provider Status -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">AI Provider Status</h2>
+            <div class="flex items-center">
+                <div class="w-3 h-3 rounded-full {{ 'bg-green-500' if openai_status else 'bg-red-500' }} mr-2"></div>
+                <span>{{ openai_status_message }}</span>
+            </div>
+        </div>
+
+        <!-- Database Status -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Database Status</h2>
+            <div class="flex items-center">
+                <div class="w-3 h-3 rounded-full {{ 'bg-green-500' if database_status else 'bg-red-500' }} mr-2"></div>
+                <span>{{ database_status_message }}</span>
+            </div>
+            {% if fallback_mode %}
+            <div class="mt-2 text-sm text-orange-600">
+                <p>Using file-based storage fallback</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Memory Status -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Memory Status</h2>
+            <p>Messages in memory: {{ message_count }}</p>
+            <p>Context entries: {{ context_count }}</p>
+        </div>
+    </div>
+
+    <!-- Recent Messages -->
+    <div class="bg-white rounded-lg shadow p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-4">Recent Messages</h2>
+        <div class="space-y-4">
+            {% for message in recent_messages %}
+            <div class="border-l-4 {{ 'border-blue-500' if message.role == 'user' else 'border-green-500' }} pl-4">
+                <p class="text-sm text-gray-600">{{ message.timestamp }}</p>
+                <p class="font-semibold">{{ message.role|title }}</p>
+                <p>{{ message.content }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- API Configuration -->
+    <div class="bg-white rounded-lg shadow p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-4">API Configuration</h2>
+        
+        <!-- AI Provider Selection -->
+        <form method="POST" action="{{ dashboard_prefix }}/set_provider" class="mb-6 space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">AI Provider</label>
+                <select name="provider" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                    <option value="openai" {% if active_provider == "openai" %}selected{% endif %}>OpenAI (GPT-3.5)</option>
+                    <option value="grok" {% if active_provider == "grok" %}selected{% endif %}>Grok</option>
+                </select>
+            </div>
+            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                Switch Provider
+            </button>
+        </form>
+
+        <!-- Provider Settings -->
+        <div class="space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-medium">Current Provider: {{ provider_info.display_name }}</h3>
+                <span class="px-2 py-1 text-sm rounded-full {% if provider_info.api_key %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}">
+                    {{ "Configured" if provider_info.api_key else "Not Configured" }}
+                </span>
+            </div>
+            
+            <form method="POST" action="{{ dashboard_prefix }}/update_config" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">API Key</label>
+                    <input type="password" name="api_key" value="{{ provider_info.api_key }}" 
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Temperature (0-2)</label>
+                    <input type="number" name="temperature" value="{{ current_settings.temperature|default(0.7) }}" 
+                           min="0" max="2" step="0.1"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                    <p class="mt-1 text-sm text-gray-500">Higher values (up to 2.0) make output more random and creative, lower values make it more focused and deterministic.</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Max Tokens (100-3000)</label>
+                    <input type="number" name="max_tokens" value="{{ current_settings.max_tokens|default(2000) }}"
+                           min="100" max="3000" step="100"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                    <p class="mt-1 text-sm text-gray-500">Maximum length of the response.</p>
+                </div>
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Update Configuration
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- GPT Rules -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-xl font-semibold mb-4">GPT Rules</h2>
+        
+        <!-- Add New Rule -->
+        <form method="POST" action="{{ dashboard_prefix }}/add_rule" class="mb-6 space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Rule Text</label>
+                <textarea name="rule_text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" rows="3"></textarea>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Category</label>
+                <select name="category" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                    <option value="Language">Language</option>
+                    <option value="Personalization">Personalization</option>
+                    <option value="Memory">Memory</option>
+                    <option value="Tone">Tone</option>
+                    <option value="Attitude/tone">Attitude/tone</option>
+                    <option value="General">General</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Priority</label>
+                <input type="number" name="priority" value="0" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+            </div>
+            <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                Add Rule
+            </button>
+        </form>
+
+        <!-- Existing Rules -->
+        <div class="space-y-4">
+            {% for category, rules in rules_by_category.items() %}
+            <div class="border rounded-lg p-4">
+                <h3 class="font-semibold text-lg mb-2">{{ category|title }}</h3>
+                {% for rule in rules %}
+                <div class="flex items-start justify-between py-2 border-t">
+                    <div class="flex-1">
+                        <p>{{ rule.text }}</p>
+                        <p class="text-sm text-gray-600">Priority: {{ rule.priority }}</p>
+                    </div>
+                    <form method="POST" action="{{ dashboard_prefix }}/remove_rule" class="ml-4">
+                        <input type="hidden" name="rule_index" value="{{ rule_indices[rule.text] }}">
+                        <button type="submit" class="text-red-500 hover:text-red-700">Remove</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+    function togglePassword(inputId) {
+        const input = document.getElementById(inputId);
+        input.type = input.type === 'password' ? 'text' : 'password';
+    }
+</script>
+{% endblock %} 
