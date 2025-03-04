@@ -218,37 +218,35 @@ async def dashboard(request: Request, auth_info: dict = Depends(verify_credentia
         ai_handler = AIResponseHandler(db)
         current_settings = await ai_handler.get_account_model_settings(account_id=1)
 
-        # Get account info
-        account = await db.get_or_create_temporary_account(1)  # Using 1 as default for dashboard
-        account_id = account.get('id', 1)
-
-        return templates.TemplateResponse(
-            "dashboard.html",
-            {
-                "request": request,
-                "telegram_status": telegram_status["status"],
-                "telegram_status_message": telegram_status["message"],
-                "openai_status": openai_status["status"],
-                "openai_status_message": openai_status["message"],
-                "database_status": database_status["status"],
-                "database_status_message": database_status["message"],
-                "fallback_mode": database_status.get("fallback", False),
-                "message_count": memory_stats["message_count"],
-                "context_count": memory_stats["context_count"],
-                "recent_messages": get_recent_messages(),
-                "rules_by_category": rules_by_category,
-                "rule_indices": {rule.text: i for i, rule in enumerate(rules)},
-                "dashboard_prefix": "/dashboard",
-                "active_provider": ai_manager.get_active_provider(),
-                "provider_info": provider_info,
-                "username": auth_info["username"],
-                "using_default_auth": auth_info["using_defaults"],
-                "current_settings": current_settings,
-                "available_models": ai_handler.get_available_models(),
-                "account_id": account_id,
-                "active_page": "home"
-            }
-        )
+        # Create rule indices for removal
+        rule_indices = {rule.text: idx for idx, rule in enumerate(rules)}
+        
+        # Get recent messages
+        recent_messages = get_recent_messages()
+        
+        return templates.TemplateResponse("dashboard.html", {
+            "request": request,
+            "username": auth_info["username"],
+            "account_id": auth_info.get("account_id", 1),
+            "using_default_auth": auth_info.get("using_default", False),
+            "telegram_status": telegram_status["status"],
+            "telegram_status_message": telegram_status["message"],
+            "openai_status": openai_status["status"],
+            "openai_status_message": openai_status["message"],
+            "database_status": database_status["status"],
+            "database_status_message": database_status["message"],
+            "fallback_mode": db.is_in_fallback_mode(),
+            "message_count": memory_stats["message_count"],
+            "context_count": memory_stats["context_count"],
+            "recent_messages": recent_messages,
+            "rules_by_category": rules_by_category,
+            "rule_indices": rule_indices,
+            "provider_info": provider_info,
+            "current_settings": current_settings,
+            "active_provider": ai_manager.get_active_provider(),
+            "dashboard_prefix": "/dashboard",
+            "active_page": "home"  # Set active page for navigation
+        })
     except Exception as e:
         logger.error(f"Error rendering dashboard: {e}")
         raise HTTPException(
@@ -450,8 +448,7 @@ async def memory_view(
         history_context = memory_manager.get_history_context()
         history_context_stats = {
             "entry_count": 1 if history_context else 0,
-            "last_update": datetime.now().isoformat(),
-            "last_modified": datetime.now().isoformat()
+            "last_update": datetime.now().isoformat()  # You'll need to get actual last update time
         }
         
         # Update status based on checks
@@ -464,24 +461,21 @@ async def memory_view(
         if not history_context:
             memory_status["history_context"] = "failing"
         
-        return templates.TemplateResponse(
-            "memory_dashboard.html",
-            {
-                "request": request,
-                "memory_status": memory_status,
-                "short_term_stats": short_term_stats,
-                "mid_term_stats": mid_term_stats,
-                "whole_history_stats": whole_history_stats,
-                "history_context_stats": history_context_stats,
-                "history_context": history_context,
-                "short_term_messages": short_term[-50:],
-                "mid_term_messages": mid_term[-50:],
-                "dashboard_prefix": "/dashboard",
-                "username": current_user.get('username', 'admin'),
-                "account_id": account_id,
-                "active_page": "memory"
-            }
-        )
+        return templates.TemplateResponse("memory_dashboard.html", {
+            "request": request,
+            "username": current_user["username"],
+            "account_id": account_id,
+            "memory_status": memory_status,
+            "short_term_stats": short_term_stats,
+            "mid_term_stats": mid_term_stats,
+            "whole_history_stats": whole_history_stats,
+            "history_context": history_context,
+            "history_context_stats": history_context_stats,
+            "short_term_messages": short_term[-10:],  # Show last 10 messages
+            "mid_term_messages": mid_term[-10:],  # Show last 10 messages
+            "dashboard_prefix": "/dashboard",
+            "active_page": "memory"  # Set active page for navigation
+        })
     except Exception as e:
         logger.error(f"Error in memory view: {e}")
         raise HTTPException(status_code=500, detail=str(e))
