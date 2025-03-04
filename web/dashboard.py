@@ -18,7 +18,7 @@ from utils.ai_response import AIResponseHandler
 from utils.hybrid_memory_manager import HybridMemoryManager
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates/dashboard")
+templates = Jinja2Templates(directory="templates")
 
 # Initialize database and managers
 db = Database()
@@ -223,7 +223,7 @@ async def dashboard(request: Request, auth_info: dict = Depends(verify_credentia
         account_id = account.get('id', 1)
 
         return templates.TemplateResponse(
-            "dashboard.html",
+            "dashboard/dashboard.html",
             {
                 "request": request,
                 "telegram_status": telegram_status["status"],
@@ -394,7 +394,7 @@ async def dashboard_overview(
         recent_messages = await db.get_memory_by_type(account['id'], 'short_term', limit=5)
         
         return templates.TemplateResponse(
-            "dashboard.html",
+            "dashboard/dashboard.html",
             {
                 "request": request,
                 "user": current_user,
@@ -465,7 +465,7 @@ async def memory_view(
             memory_status["history_context"] = "failing"
         
         return templates.TemplateResponse(
-            "memory_dashboard.html",
+            "dashboard/memory_dashboard.html",
             {
                 "request": request,
                 "memory_status": memory_status,
@@ -553,7 +553,7 @@ async def admin_view(
         active_users = await db.get_active_users_count(last_days=7)
         
         return templates.TemplateResponse(
-            "admin.html",
+            "dashboard/admin.html",
             {
                 "request": request,
                 "user": current_user,
@@ -588,7 +588,7 @@ async def settings_view(
         }
         
         return templates.TemplateResponse(
-            "settings.html",
+            "dashboard/settings.html",
             {
                 "request": request,
                 "user": current_user,
