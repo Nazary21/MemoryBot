@@ -245,7 +245,8 @@ async def dashboard(request: Request, auth_info: dict = Depends(verify_credentia
                 "using_default_auth": auth_info["using_defaults"],
                 "current_settings": current_settings,
                 "available_models": ai_handler.get_available_models(),
-                "account_id": account_id  # Add account ID to template context
+                "account_id": account_id,
+                "active_page": "home"
             }
         )
     except Exception as e:
@@ -475,7 +476,10 @@ async def memory_view(
                 "history_context": history_context,
                 "short_term_messages": short_term[-50:],
                 "mid_term_messages": mid_term[-50:],
-                "dashboard_prefix": "/dashboard"
+                "dashboard_prefix": "/dashboard",
+                "username": current_user.get('username', 'admin'),
+                "account_id": account_id,
+                "active_page": "memory"
             }
         )
     except Exception as e:

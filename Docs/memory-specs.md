@@ -158,3 +158,126 @@ Each memory component maintains a status:
    - Capacity warnings
    - Performance degradation
    - Synchronization issues
+
+### 8. Bot Memory Usage
+
+1. **Message Processing Flow**
+   ```
+   User Message → Memory Check → Response Generation → Memory Update
+        ↓              ↓               ↓                   ↓
+   Validate Input   Get Context    Use Context      Store New Messages
+   ```
+
+2. **Context Assembly**
+   - **Short-term Priority**
+     ```python
+     context = {
+       "recent": short_term[-10:],  # Last 10 messages
+       "history_summary": history_context,
+       "relevant_mid_term": mid_term.filter(relevance_score > 0.7)
+     }
+     ```
+   - **Context Selection**
+     - Recent messages always included
+     - History context if available
+     - Relevant mid-term messages based on topic
+
+3. **Memory Reading Sequence**
+   ```
+   1. Check history_context.json
+      ↓
+   2. Load short_term.json (last 50 messages)
+      ↓
+   3. If needed, check mid_term.json
+      ↓
+   4. On demand: access whole_history.json
+   ```
+
+4. **Context Utilization**
+   - **Command Processing**
+     - `/historycontext`: Reads and displays history_context.json
+     - `/analyze`: Triggers whole history analysis
+     - `/clear`: Resets short-term memory
+     - `/context`: Shows current conversation context
+
+   - **Conversation Flow**
+     ```
+     1. Load recent context (last 10 messages)
+     2. Add history summary if relevant
+     3. Include specific mid-term memories if topic matches
+     4. Generate response using combined context
+     ```
+
+5. **Memory Access Patterns**
+   - **High Frequency**
+     - Short-term memory: Every message
+     - History context: Every few messages
+   - **Medium Frequency**
+     - Mid-term memory: Topic changes
+     - Context regeneration: 50 message threshold
+   - **Low Frequency**
+     - Whole history: Analysis commands
+     - Storage cleanup: Daily
+
+6. **Context Switching**
+   ```
+   New Topic → Check Mid-term → Update Context → Adjust Response
+       ↓            ↓               ↓               ↓
+   Detect Change  Find Related   Merge Context   Apply Rules
+   ```
+
+7. **Memory-Based Features**
+   - **Conversation Continuity**
+     - Track ongoing discussions
+     - Maintain context across messages
+     - Handle topic transitions
+   
+   - **User Preferences**
+     - Remember interaction styles
+     - Store user-specific contexts
+     - Adapt responses based on history
+
+   - **Learning Patterns**
+     - Identify common topics
+     - Track successful interactions
+     - Adapt to user communication style
+
+8. **Memory Optimization**
+   - **Context Relevance**
+     ```json
+     {
+       "priority": 1-5,
+       "relevance_score": 0.0-1.0,
+       "topic_tags": ["tag1", "tag2"],
+       "expiration": "timestamp"
+     }
+     ```
+   
+   - **Smart Loading**
+     - Load only relevant context
+     - Prioritize recent interactions
+     - Cache frequently accessed data
+
+   - **Memory Cleanup**
+     - Archive old conversations
+     - Remove redundant context
+     - Compress historical data
+
+9. **Error Recovery**
+   - **Missing Context**
+     ```
+     No Context → Use Defaults → Rebuild Context → Normal Operation
+         ↓            ↓              ↓                ↓
+     Log Error    Basic Mode    Background Task    Resume
+     ```
+   
+   - **Corrupted Memory**
+     - Fall back to available components
+     - Rebuild from whole history
+     - Log and report issues
+
+10. **Performance Considerations**
+    - Cache recent context in memory
+    - Lazy load historical data
+    - Batch memory updates
+    - Asynchronous context analysis
