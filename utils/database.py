@@ -293,17 +293,19 @@ class Database:
             # Use account-specific directory
             account_dir = os.path.join(self.memory_dir, f"account_{account_id}")
             os.makedirs(account_dir, exist_ok=True)
-            chat_history_file = os.path.join(account_dir, "chat_history.json")
+            
+            # Store directly in memory-type specific file
+            memory_type_file = os.path.join(account_dir, f"{memory_type}.json")
             
             # Load existing messages
-            messages = []
-            if os.path.exists(chat_history_file):
-                with open(chat_history_file, 'r') as f:
-                    messages = json.load(f)
+            memory_type_messages = []
+            if os.path.exists(memory_type_file):
+                with open(memory_type_file, 'r') as f:
+                    memory_type_messages = json.load(f)
             
             # Add new message
             new_message = {
-                'id': len(messages) + 1,
+                'id': len(memory_type_messages) + 1,
                 'account_id': account_id,
                 'telegram_chat_id': chat_id,
                 'role': role,
@@ -312,11 +314,19 @@ class Database:
                 'timestamp': datetime.now().isoformat()
             }
             
-            messages.append(new_message)
+            memory_type_messages.append(new_message)
             
-            # Save updated messages
-            with open(chat_history_file, 'w') as f:
-                json.dump(messages, f)
+            # Limit short_term to 50 messages
+            if memory_type == 'short_term' and len(memory_type_messages) > 50:
+                memory_type_messages = memory_type_messages[-50:]
+            
+            # Limit mid_term to 200 messages
+            if memory_type == 'mid_term' and len(memory_type_messages) > 200:
+                memory_type_messages = memory_type_messages[-200:]
+            
+            # Save updated memory-type specific messages
+            with open(memory_type_file, 'w') as f:
+                json.dump(memory_type_messages, f)
                 
         except Exception as e:
             logger.error(f"Error in fallback message storage: {e}")
@@ -351,18 +361,20 @@ class Database:
             
             # Use account-specific directory
             account_dir = os.path.join(self.memory_dir, f"account_{account_id}")
-            chat_history_file = os.path.join(account_dir, "chat_history.json")
+            
+            # Get messages from memory-type specific file
+            memory_type_file = os.path.join(account_dir, f"{memory_type}.json")
             
             # Load existing messages
-            all_messages = []
-            if os.path.exists(chat_history_file):
-                with open(chat_history_file, 'r') as f:
-                    all_messages = json.load(f)
+            memory_type_messages = []
+            if os.path.exists(memory_type_file):
+                with open(memory_type_file, 'r') as f:
+                    memory_type_messages = json.load(f)
             
-            # Filter messages by chat_id and memory_type
+            # Filter messages by chat_id if needed
             filtered_messages = [
-                msg for msg in all_messages 
-                if msg.get('telegram_chat_id') == chat_id and msg.get('memory_type') == memory_type
+                msg for msg in memory_type_messages 
+                if msg.get('telegram_chat_id') == chat_id
             ]
             
             # Sort by timestamp (newest first)
