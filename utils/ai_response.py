@@ -6,7 +6,7 @@ import os
 from typing import List, Dict, Any, Optional
 from config.ai_providers import AIProviderManager
 from openai import OpenAI
-from config.settings import OPENAI_API_KEY
+from config.settings import OPENAI_API_KEY, MOCK_MODE
 
 logger = logging.getLogger(__name__)
 
@@ -132,8 +132,20 @@ class AIResponseHandler:
                         "max_tokens": self.default_settings["max_tokens"]
                     }
             
-            # Use OpenAI client
+            # Try using the old method first in fallback mode
+            if self.db.supabase is None:
+                logger.info("Using fallback mode - trying old method first")
+                try:
+                    return await self.get_chat_response_old(messages, settings['temperature'])
+                except Exception as old_method_error:
+                    logger.error(f"Error with old method: {old_method_error}")
+                    # Continue to try OpenAI client as last resort
+            
+            # Try OpenAI client
             try:
+                if not OPENAI_API_KEY:
+                    raise ValueError("OpenAI API key not configured")
+                    
                 response = await self.client.chat.completions.create(
                     model=settings['model'],
                     messages=messages,
@@ -152,8 +164,14 @@ class AIResponseHandler:
             except Exception as openai_error:
                 logger.error(f"OpenAI API error: {openai_error}")
                 
-                # Fall back to provider manager if OpenAI client fails
-                return await self.get_chat_response_old(messages, settings['temperature'])
+                # Try old method as fallback if not already tried
+                if self.db.supabase is not None:
+                    try:
+                        return await self.get_chat_response_old(messages, settings['temperature'])
+                    except Exception as fallback_error:
+                        logger.error(f"Error with fallback method: {fallback_error}")
+                
+                raise  # Re-raise the error if all attempts failed
                 
         except Exception as e:
             logger.error(f"Error getting chat response: {e}")
