@@ -28,9 +28,9 @@ async def analyze_whole_history(memory_manager) -> Optional[Dict]:
     """
     try:
         # Get messages from memory manager
-        short_term = memory_manager._load_memory_from_file('short_term')
-        mid_term = memory_manager._load_memory_from_file('mid_term')
-        whole_history = memory_manager._load_memory_from_file('whole_history')
+        short_term = await memory_manager.get_memory(memory_manager.account_id, 'short_term')
+        mid_term = await memory_manager.get_memory(memory_manager.account_id, 'mid_term')
+        whole_history = await memory_manager.get_memory(memory_manager.account_id, 'whole_history')
         
         logger.info(f"Loaded messages - Short term: {len(short_term)}, Mid term: {len(mid_term)}, Whole: {len(whole_history)}")
         
@@ -53,13 +53,19 @@ async def analyze_whole_history(memory_manager) -> Optional[Dict]:
         # Sort by timestamp
         all_messages.sort(key=lambda x: x.get('timestamp', ''))
         
+        # Check if we have any messages at all
+        if not all_messages:
+            logger.info("No messages available for analysis")
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "category": "system",
+                "summary": "No messages available for history context generation",
+                "message_count": 0,
+                "total_messages": 0
+            }
+            
         # Take last 100 messages for analysis
         messages_to_analyze = all_messages[-100:]
-        
-        if len(messages_to_analyze) < MIN_MESSAGES_FOR_ANALYSIS:
-            logger.info(f"Not enough valid messages for analysis. Found {len(messages_to_analyze)}, need at least {MIN_MESSAGES_FOR_ANALYSIS}")
-            return None
-            
         logger.info(f"Analyzing {len(messages_to_analyze)} messages")
         
         # Prepare conversation history
@@ -69,45 +75,59 @@ async def analyze_whole_history(memory_manager) -> Optional[Dict]:
         ])
 
         # Get GPT-4 to analyze the history
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {
-                    "role": "system", 
-                    "content": """Analyze the conversation history and create a concise summary.
-                    Focus on key information that would be valuable for future conversations.
-                    Include main topics discussed, user preferences, and important context."""
-                },
-                {"role": "user", "content": history_text}
-            ],
-            temperature=0.7,
-            max_tokens=1000
-        )
-        
-        summary = response.choices[0].message.content.strip()
-        
-        if not summary or len(summary) < 50:
-            logger.warning("Generated summary is too short or empty")
+        try:
+            # Adjust prompt based on message count
+            if len(messages_to_analyze) == 1:
+                system_prompt = """Analyze this single message and create a brief context summary.
+                Focus on key information that would be valuable for future conversations.
+                Format the summary in a clear, concise way."""
+            else:
+                system_prompt = """Analyze the conversation history and create a concise summary.
+                Focus on key information that would be valuable for future conversations. Form detailed profiles of users, their personalities, phsycological portrait, weaknesses, strengths,interests, and dislikes, to use it in future. Keep it as detailed as you can to provide personalised comminication. 
+                Include main topics discussed, user preferences, and important context.
+                Format the summary in a clear, structured way."""
+
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": system_prompt
+                    },
+                    {"role": "user", "content": history_text}
+                ],
+                temperature=0.7,
+                max_tokens=1000
+            )
+            
+            summary = response.choices[0].message.content.strip()
+            
+            if not summary:
+                logger.warning("Generated summary is empty")
+                return None
+                
+            # Save context in format compatible with get_history_context
+            context_data = {
+                "timestamp": datetime.now().isoformat(),
+                "category": "analysis",
+                "summary": summary,
+                "message_count": len(messages_to_analyze),
+                "total_messages": len(all_messages)
+            }
+            
+            # Save to file
+            history_file = os.path.join(memory_manager.memory_dir, f"account_{memory_manager.account_id}", HISTORY_CONTEXT_FILE)
+            os.makedirs(os.path.dirname(history_file), exist_ok=True)
+            
+            with open(history_file, 'w') as f:
+                json.dump(context_data, f, indent=2)
+                
+            logger.info(f"Successfully updated history context. Analyzed {len(messages_to_analyze)} messages out of {len(all_messages)} total")
+            return context_data
+                
+        except Exception as api_error:
+            logger.error(f"Error calling OpenAI API: {str(api_error)}", exc_info=True)
             return None
-            
-        # Save context in format compatible with get_history_context
-        context_data = {
-            "timestamp": datetime.now().isoformat(),
-            "category": "analysis",
-            "summary": summary,
-            "message_count": len(messages_to_analyze),
-            "total_messages": len(all_messages)
-        }
-        
-        # Save to file
-        history_file = os.path.join(memory_manager.memory_dir, f"account_{memory_manager.account_id}", HISTORY_CONTEXT_FILE)
-        os.makedirs(os.path.dirname(history_file), exist_ok=True)
-        
-        with open(history_file, 'w') as f:
-            json.dump(context_data, f, indent=2)
-            
-        logger.info(f"Successfully updated history context. Analyzed {len(messages_to_analyze)} messages out of {len(all_messages)} total")
-        return context_data
             
     except Exception as e:
         logger.error(f"Error analyzing whole history: {str(e)}", exc_info=True)

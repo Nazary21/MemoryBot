@@ -436,63 +436,64 @@ async def memory_view(
         whole_history_stats = {"message_count": 0, "last_update": "No messages"}
         history_context_stats = {"entry_count": 0, "last_update": "No entries", "last_modified": "Never"}
         
-        # Initialize message lists
-        short_term = []
-        mid_term = []
-        whole_history = []
-        history_context = ""
-        
         try:
-            # Get memory data with proper error handling
-            short_term = await memory_manager.get_memory(account_id, 'short_term') or []
-            mid_term = await memory_manager.get_memory(account_id, 'mid_term') or []
-            whole_history = await memory_manager.get_memory(account_id, 'whole_history') or []
-            
-            # Update stats if we have data
+            # Get short-term memory
+            short_term = await memory_manager.get_memory(account_id, 'short_term')
             if short_term:
-                short_term_stats = {
-                    "message_count": len(short_term),
-                    "last_update": short_term[-1].get('timestamp', 'Unknown') if short_term else "No messages"
-                }
                 memory_status["short_term"] = "active"
-            
+                short_term_stats["message_count"] = len(short_term)
+                if short_term:
+                    short_term_stats["last_update"] = short_term[-1].get('timestamp', 'Unknown')
+            else:
+                memory_status["short_term"] = "empty"
+                
+            # Get mid-term memory
+            mid_term = await memory_manager.get_memory(account_id, 'mid_term')
             if mid_term:
-                mid_term_stats = {
-                    "message_count": len(mid_term),
-                    "last_update": mid_term[-1].get('timestamp', 'Unknown') if mid_term else "No messages"
-                }
                 memory_status["mid_term"] = "active"
-            
+                mid_term_stats["message_count"] = len(mid_term)
+                if mid_term:
+                    mid_term_stats["last_update"] = mid_term[-1].get('timestamp', 'Unknown')
+            else:
+                memory_status["mid_term"] = "empty"
+                
+            # Get whole history
+            whole_history = await memory_manager.get_memory(account_id, 'whole_history')
             if whole_history:
-                whole_history_stats = {
-                    "message_count": len(whole_history),
-                    "last_update": whole_history[-1].get('timestamp', 'Unknown') if whole_history else "No messages"
-                }
                 memory_status["whole_history"] = "active"
-            
+                whole_history_stats["message_count"] = len(whole_history)
+                if whole_history:
+                    whole_history_stats["last_update"] = whole_history[-1].get('timestamp', 'Unknown')
+            else:
+                memory_status["whole_history"] = "empty"
+                
             # Get history context
-            history_context_path = os.path.join(memory_manager.account_memory_dir, HISTORY_CONTEXT_FILE)
-            if os.path.exists(history_context_path):
+            history_context = memory_manager.get_history_context()
+            if history_context:
+                memory_status["history_context"] = "active"
+                history_context_stats["entry_count"] = 1  # Since we're using single entry format
+                history_context_stats["last_update"] = "Context available"
+                
+                # Try to get last modified time from file
                 try:
-                    with open(history_context_path, 'r') as f:
-                        context_data = json.load(f)
-                        history_context = context_data.get('summary', '')
-                        history_context_stats = {
-                            "entry_count": 1,
-                            "last_update": context_data.get('timestamp', datetime.now().isoformat()),
-                            "last_modified": context_data.get('timestamp', datetime.now().isoformat())
-                        }
-                        memory_status["history_context"] = "active"
+                    history_file = os.path.join(memory_manager.memory_dir, f"account_{account_id}", "history_context.json")
+                    if os.path.exists(history_file):
+                        mod_time = datetime.fromtimestamp(os.path.getmtime(history_file))
+                        history_context_stats["last_modified"] = mod_time.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception as e:
-                    logger.error(f"Error reading history context: {e}")
-                    memory_status["history_context"] = "failing"
-            
-        except Exception as memory_error:
-            logger.error(f"Error retrieving memory data: {memory_error}")
-            # Mark failing components in status
-            for component in memory_status:
-                if memory_status[component] == "initializing":
-                    memory_status[component] = "failing"
+                    logger.error(f"Error getting history context file info: {e}")
+            else:
+                memory_status["history_context"] = "empty"
+        except Exception as e:
+            logger.error(f"Error checking memory status: {e}")
+            # Mark failing status for the component that errored
+            for key in memory_status:
+                if memory_status[key] == "initializing":
+                    memory_status[key] = "failing"
+        
+        # Get messages for display
+        short_term_messages = short_term[-10:] if short_term else []
+        mid_term_messages = mid_term[-10:] if mid_term else []
         
         return templates.TemplateResponse(
             "dashboard/memory_dashboard.html",
@@ -503,39 +504,16 @@ async def memory_view(
                 "mid_term_stats": mid_term_stats,
                 "whole_history_stats": whole_history_stats,
                 "history_context_stats": history_context_stats,
+                "short_term_messages": short_term_messages,
+                "mid_term_messages": mid_term_messages,
                 "history_context": history_context,
-                "short_term_messages": short_term[-50:] if short_term else [],
-                "mid_term_messages": mid_term[-50:] if mid_term else [],
                 "dashboard_prefix": "/dashboard",
-                "active_page": "memory",
-                "username": auth_info["username"]
+                "active_page": "memory"
             }
         )
     except Exception as e:
         logger.error(f"Error in memory view: {e}")
-        # Return a basic error response instead of raising an exception
-        return templates.TemplateResponse(
-            "dashboard/memory_dashboard.html",
-            {
-                "request": request,
-                "memory_status": {
-                    "short_term": "failing",
-                    "mid_term": "failing",
-                    "whole_history": "failing",
-                    "history_context": "failing"
-                },
-                "short_term_stats": {"message_count": 0, "last_update": "Error"},
-                "mid_term_stats": {"message_count": 0, "last_update": "Error"},
-                "whole_history_stats": {"message_count": 0, "last_update": "Error"},
-                "history_context_stats": {"entry_count": 0, "last_update": "Error", "last_modified": "Error"},
-                "history_context": "",
-                "short_term_messages": [],
-                "mid_term_messages": [],
-                "dashboard_prefix": "/dashboard",
-                "active_page": "memory",
-                "username": auth_info["username"]
-            }
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/regenerate_context")
 async def regenerate_context(
@@ -552,8 +530,11 @@ async def regenerate_context(
         context_data = await analyze_whole_history(memory_manager)
         
         if context_data:
+            # Return the summary, which will either be an analysis or the "no messages" message
             return {"context": context_data.get('summary', '')}
-        return {"context": "No significant history to analyze."}
+            
+        # This case only happens if there was an error during analysis
+        return {"context": "Error generating history context. Please check the logs and try again."}
     except Exception as e:
         logger.error(f"Error regenerating context: {e}")
         raise HTTPException(status_code=500, detail=str(e))

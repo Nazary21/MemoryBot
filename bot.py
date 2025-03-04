@@ -750,7 +750,10 @@ try:
     application.add_handler(CommandHandler("account_id", account_id_command))
     # Update message handler to use Mention filter or reply filter
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (filters.Entity("mention") | filters.REPLY),
+        filters.TEXT & ~filters.COMMAND & (
+            (filters.Entity("mention") & filters.Regex(f"@{application.bot.username}")) |
+            filters.REPLY
+        ),
         message_handler
     ))
     logger.info("Handlers added successfully")
