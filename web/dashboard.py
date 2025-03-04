@@ -410,12 +410,13 @@ async def dashboard_overview(
 @router.get("/memory", response_class=HTMLResponse)
 async def memory_view(
     request: Request,
-    current_user = Depends(get_current_user),
+    auth_info: dict = Depends(verify_credentials),
     db: Database = Depends()
 ):
     """Memory management dashboard view"""
     try:
-        account_id = current_user['id']
+        # Use default account_id=1 for dashboard
+        account_id = 1
         memory_manager = HybridMemoryManager(db, account_id)
         
         # Get memory status
@@ -478,7 +479,7 @@ async def memory_view(
                 "mid_term_messages": mid_term[-50:],
                 "dashboard_prefix": "/dashboard",
                 "active_page": "memory",
-                "username": current_user["username"] if current_user else "Guest"
+                "username": auth_info["username"]
             }
         )
     except Exception as e:
@@ -487,12 +488,13 @@ async def memory_view(
 
 @router.post("/regenerate_context")
 async def regenerate_context(
-    current_user = Depends(get_current_user),
+    auth_info: dict = Depends(verify_credentials),
     db: Database = Depends()
 ):
     """Regenerate history context"""
     try:
-        account_id = current_user['id']
+        # Use default account_id=1 for dashboard
+        account_id = 1
         memory_manager = HybridMemoryManager(db, account_id)
         
         from utils.whole_history_analyzer import analyze_whole_history
@@ -508,12 +510,13 @@ async def regenerate_context(
 @router.post("/update_context")
 async def update_context(
     context: Dict[str, str],
-    current_user = Depends(get_current_user),
+    auth_info: dict = Depends(verify_credentials),
     db: Database = Depends()
 ):
     """Update history context manually"""
     try:
-        account_id = current_user['id']
+        # Use default account_id=1 for dashboard
+        account_id = 1
         memory_manager = HybridMemoryManager(db, account_id)
         
         # Save context with metadata
