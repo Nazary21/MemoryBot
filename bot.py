@@ -479,6 +479,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if update.message.reply_to_message.from_user.id != context.bot.id:
                 debug_log(chat_id, "Ignored reply", "Not a reply to bot's message")
                 return
+        # If not a reply, check if it's a mention of this bot specifically
+        elif "mention" in [entity.type for entity in update.message.entities]:
+            # Check if the message mentions this bot specifically
+            if f"@{context.bot.username}" not in update.message.text:
+                debug_log(chat_id, "Ignored mention", "Not mentioning this bot")
+                return
                 
         original_text = update.message.text
         debug_log(chat_id, "Original text", original_text)
@@ -750,10 +756,7 @@ try:
     application.add_handler(CommandHandler("account_id", account_id_command))
     # Update message handler to use Mention filter or reply filter
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (
-            (filters.Entity("mention") & filters.Regex(f"@{application.bot.username}")) |
-            filters.REPLY
-        ),
+        filters.TEXT & ~filters.COMMAND & (filters.Entity("mention") | filters.REPLY),
         message_handler
     ))
     logger.info("Handlers added successfully")
