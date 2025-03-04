@@ -286,12 +286,7 @@ class RuleManager:
             
             if rules is None or not rules:
                 logger.warning("No rules provided for formatting")
-                # Return default rules text instead of "No active rules"
-                formatted = "Current Bot Rules:\n\n"
-                for rule in self.default_rules:
-                    formatted += f"- {rule['text']}\n"
-                logger.info(f"Using {len(self.default_rules)} default rules")
-                return formatted.strip()
+                return "No active rules found."
                 
             # Group rules by category
             rules_by_category = {}
@@ -316,8 +311,7 @@ class RuleManager:
             return formatted.strip()
         except Exception as e:
             logger.error(f"Error formatting rules: {e}")
-            # Return default rules as fallback
-            return "\n".join([f"- {rule['text']}" for rule in self.default_rules])
+            return "Error formatting rules."
 
     async def add_rule(self, account_id: int, rule_text: str, category: str = "General", priority: int = 0) -> Optional[Rule]:
         """Add a new rule for an account"""
