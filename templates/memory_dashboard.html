@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Memory Status Overview -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold mb-4">Memory Management</h1>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Short-term Memory Status -->
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-lg font-semibold">Short-term Memory</h2>
+                    <span class="px-2 py-1 rounded-full text-sm {{ 'bg-green-100 text-green-800' if memory_status.short_term == 'active' else 'bg-red-100 text-red-800' }}">
+                        {{ memory_status.short_term }}
+                    </span>
+                </div>
+                <p>Messages: {{ short_term_stats.message_count }}</p>
+                <p class="text-sm text-gray-600">Last update: {{ short_term_stats.last_update }}</p>
+            </div>
+
+            <!-- Mid-term Memory Status -->
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-lg font-semibold">Mid-term Memory</h2>
+                    <span class="px-2 py-1 rounded-full text-sm {{ 'bg-green-100 text-green-800' if memory_status.mid_term == 'active' else 'bg-red-100 text-red-800' }}">
+                        {{ memory_status.mid_term }}
+                    </span>
+                </div>
+                <p>Messages: {{ mid_term_stats.message_count }}</p>
+                <p class="text-sm text-gray-600">Last update: {{ mid_term_stats.last_update }}</p>
+            </div>
+
+            <!-- Whole History Status -->
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-lg font-semibold">Whole History</h2>
+                    <span class="px-2 py-1 rounded-full text-sm {{ 'bg-green-100 text-green-800' if memory_status.whole_history == 'active' else 'bg-red-100 text-red-800' }}">
+                        {{ memory_status.whole_history }}
+                    </span>
+                </div>
+                <p>Messages: {{ whole_history_stats.message_count }}</p>
+                <p class="text-sm text-gray-600">Last update: {{ whole_history_stats.last_update }}</p>
+            </div>
+
+            <!-- History Context Status -->
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-lg font-semibold">History Context</h2>
+                    <span class="px-2 py-1 rounded-full text-sm {{ 'bg-green-100 text-green-800' if memory_status.history_context == 'active' else 'bg-red-100 text-red-800' }}">
+                        {{ memory_status.history_context }}
+                    </span>
+                </div>
+                <p>Entries: {{ history_context_stats.entry_count }}</p>
+                <p class="text-sm text-gray-600">Last analysis: {{ history_context_stats.last_update }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Context Management -->
+    <div class="bg-white rounded-lg shadow p-6 mb-8">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold">History Context</h2>
+            <div class="space-x-2">
+                <button onclick="regenerateContext()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Regenerate Context
+                </button>
+                <button onclick="saveContext()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                    Save Changes
+                </button>
+            </div>
+        </div>
+        <div class="mb-4">
+            <textarea id="historyContext" rows="10" class="w-full p-2 border rounded-lg">{{ history_context }}</textarea>
+        </div>
+        <div class="text-sm text-gray-600">
+            Last modified: {{ history_context_stats.last_modified }}
+        </div>
+    </div>
+
+    <!-- Memory Contents -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Short-term Memory -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Short-term Memory</h2>
+            <div class="space-y-4 max-h-96 overflow-y-auto">
+                {% for message in short_term_messages %}
+                <div class="border-l-4 {{ 'border-blue-500' if message.role == 'user' else 'border-green-500' }} pl-4">
+                    <p class="text-sm text-gray-600">{{ message.timestamp }}</p>
+                    <p class="font-semibold">{{ message.role|title }}</p>
+                    <p>{{ message.content }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Mid-term Memory -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Mid-term Memory</h2>
+            <div class="space-y-4 max-h-96 overflow-y-auto">
+                {% for message in mid_term_messages %}
+                <div class="border-l-4 {{ 'border-blue-500' if message.role == 'user' else 'border-green-500' }} pl-4">
+                    <p class="text-sm text-gray-600">{{ message.timestamp }}</p>
+                    <p class="font-semibold">{{ message.role|title }}</p>
+                    <p>{{ message.content }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function regenerateContext() {
+    try {
+        const response = await fetch('{{ dashboard_prefix }}/regenerate_context', {
+            method: 'POST',
+        });
+        if (response.ok) {
+            const result = await response.json();
+            document.getElementById('historyContext').value = result.context;
+            location.reload();
+        } else {
+            alert('Failed to regenerate context');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error regenerating context');
+    }
+}
+
+async function saveContext() {
+    const context = document.getElementById('historyContext').value;
+    try {
+        const response = await fetch('{{ dashboard_prefix }}/update_context', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ context }),
+        });
+        if (response.ok) {
+            alert('Context saved successfully');
+            location.reload();
+        } else {
+            alert('Failed to save context');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error saving context');
+    }
+}
+</script>
+{% endblock %} 

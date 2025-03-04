@@ -15,6 +15,7 @@ import secrets
 from utils.auth_utils import get_current_user
 from utils.database import Database
 from utils.ai_response import AIResponseHandler
+from utils.hybrid_memory_manager import HybridMemoryManager
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -411,26 +412,125 @@ async def memory_view(
     current_user = Depends(get_current_user),
     db: Database = Depends()
 ):
-    """Memory management page"""
+    """Memory management dashboard view"""
     try:
-        account_id = current_user['account_id']
+        account_id = current_user['id']
+        memory_manager = HybridMemoryManager(db, account_id)
         
-        memory_stats = await db.get_memory_stats(account_id)
-        recent_messages = await db.get_memory_by_type(account_id, 'short_term', limit=20)
-        history_context = await db.get_history_context(account_id)
+        # Get memory status
+        memory_status = {
+            "short_term": "active",
+            "mid_term": "active",
+            "whole_history": "active",
+            "history_context": "active"
+        }
+        
+        # Get memory stats
+        short_term = await memory_manager.get_memory(account_id, 'short_term')
+        mid_term = await memory_manager.get_memory(account_id, 'mid_term')
+        whole_history = await memory_manager.get_memory(account_id, 'whole_history')
+        
+        short_term_stats = {
+            "message_count": len(short_term),
+            "last_update": short_term[-1]['timestamp'] if short_term else "No messages"
+        }
+        
+        mid_term_stats = {
+            "message_count": len(mid_term),
+            "last_update": mid_term[-1]['timestamp'] if mid_term else "No messages"
+        }
+        
+        whole_history_stats = {
+            "message_count": len(whole_history),
+            "last_update": whole_history[-1]['timestamp'] if whole_history else "No messages"
+        }
+        
+        # Get history context
+        history_context = memory_manager.get_history_context()
+        history_context_stats = {
+            "entry_count": 1 if history_context else 0,
+            "last_update": datetime.now().isoformat(),
+            "last_modified": datetime.now().isoformat()
+        }
+        
+        # Update status based on checks
+        if not short_term:
+            memory_status["short_term"] = "failing"
+        if not mid_term:
+            memory_status["mid_term"] = "failing"
+        if not whole_history:
+            memory_status["whole_history"] = "failing"
+        if not history_context:
+            memory_status["history_context"] = "failing"
         
         return templates.TemplateResponse(
-            "dashboard/memory.html",
+            "memory_dashboard.html",
             {
                 "request": request,
-                "user": current_user,
-                "memory_stats": memory_stats,
-                "recent_messages": recent_messages,
+                "memory_status": memory_status,
+                "short_term_stats": short_term_stats,
+                "mid_term_stats": mid_term_stats,
+                "whole_history_stats": whole_history_stats,
+                "history_context_stats": history_context_stats,
                 "history_context": history_context,
-                "active_page": "memory"
+                "short_term_messages": short_term[-50:],
+                "mid_term_messages": mid_term[-50:],
+                "dashboard_prefix": "/dashboard"
             }
         )
     except Exception as e:
+        logger.error(f"Error in memory view: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/regenerate_context")
+async def regenerate_context(
+    current_user = Depends(get_current_user),
+    db: Database = Depends()
+):
+    """Regenerate history context"""
+    try:
+        account_id = current_user['id']
+        memory_manager = HybridMemoryManager(db, account_id)
+        
+        from utils.whole_history_analyzer import analyze_whole_history
+        context_data = await analyze_whole_history(memory_manager)
+        
+        if context_data:
+            return {"context": context_data.get('summary', '')}
+        return {"context": "No significant history to analyze."}
+    except Exception as e:
+        logger.error(f"Error regenerating context: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/update_context")
+async def update_context(
+    context: Dict[str, str],
+    current_user = Depends(get_current_user),
+    db: Database = Depends()
+):
+    """Update history context manually"""
+    try:
+        account_id = current_user['id']
+        memory_manager = HybridMemoryManager(db, account_id)
+        
+        # Save context with metadata
+        context_data = {
+            "timestamp": datetime.now().isoformat(),
+            "category": "manual",
+            "summary": context.get('context', ''),
+            "message_count": 0,
+            "total_messages": 0
+        }
+        
+        history_file = os.path.join(memory_manager.memory_dir, f"account_{account_id}", HISTORY_CONTEXT_FILE)
+        os.makedirs(os.path.dirname(history_file), exist_ok=True)
+        
+        with open(history_file, 'w') as f:
+            json.dump(context_data, f, indent=2)
+            
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Error updating context: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/admin", response_class=HTMLResponse)
