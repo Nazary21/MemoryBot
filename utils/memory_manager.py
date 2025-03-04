@@ -45,7 +45,7 @@ class MemoryManager:
                 logger.info("Short-term memory reached 50 messages, generating context summary...")
                 try:
                     from utils.whole_history_analyzer import analyze_whole_history
-                    asyncio.create_task(analyze_whole_history())
+                    asyncio.create_task(analyze_whole_history(self))
                 except Exception as e:
                     logger.error(f"Error triggering context generation: {e}")
             

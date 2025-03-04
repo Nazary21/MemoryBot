@@ -27,10 +27,7 @@ async def analyze_whole_history(memory_manager) -> Optional[Dict]:
         dict: The generated context summary if successful, None if failed
     """
     try:
-        # Get messages directly from file in fallback mode
-        chat_id = memory_manager.account_id  # This will be the chat_id in fallback mode
-        
-        # Load messages from files
+        # Load messages from all memory types
         short_term = memory_manager._load_memory_from_file('short_term')
         mid_term = memory_manager._load_memory_from_file('mid_term')
         whole_history = memory_manager._load_memory_from_file('whole_history')
@@ -81,14 +78,15 @@ async def analyze_whole_history(memory_manager) -> Optional[Dict]:
             logger.warning("Generated summary is too short or empty")
             return None
             
+        # Create context data in the format expected by get_history_context
         context_data = {
             "summary": global_summary,
             "timestamp": datetime.now().isoformat(),
             "message_count": len(valid_messages)
         }
         
-        # Save context
-        history_file = os.path.join(memory_manager.memory_dir, f"account_{chat_id}", HISTORY_CONTEXT_FILE)
+        # Save context directly to file to ensure format matches what get_history_context expects
+        history_file = os.path.join(memory_manager.memory_dir, f"account_{memory_manager.account_id}", HISTORY_CONTEXT_FILE)
         os.makedirs(os.path.dirname(history_file), exist_ok=True)
         
         with open(history_file, 'w') as f:
