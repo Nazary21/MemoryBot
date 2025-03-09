@@ -1,3 +1,15 @@
 {
-  "active_provider": "openai"
+  "active_provider": "grok",
+  "providers": {
+    "openai": {
+      "endpoint": "https://api.openai.com/v1",
+      "model": "gpt-3.5-turbo",
+      "display_name": "OpenAI (GPT-3.5)"
+    },
+    "grok": {
+      "endpoint": "https://api.x.ai/v1",
+      "model": "grok-2-latest",
+      "display_name": "Grok"
+    }
+  }
 }

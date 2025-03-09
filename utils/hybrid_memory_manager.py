@@ -119,9 +119,12 @@ class HybridMemoryManager:
             content: The message content
         """
         try:
+            logger.info(f"HybridMemoryManager: Starting add_message for chat_id={chat_id}, role={role}")
             account = await self.db.get_or_create_temporary_account(chat_id)
+            logger.info(f"HybridMemoryManager: Got account: {account.get('id', 'unknown')}")
             
             # Always add to whole_history
+            logger.info(f"HybridMemoryManager: Storing message in whole_history")
             await self.db.store_chat_message(
                 account_id=account['id'],
                 chat_id=chat_id,
@@ -131,6 +134,7 @@ class HybridMemoryManager:
             )
             
             # Add to short_term
+            logger.info(f"HybridMemoryManager: Storing message in short_term")
             await self.db.store_chat_message(
                 account_id=account['id'],
                 chat_id=chat_id,
@@ -141,7 +145,9 @@ class HybridMemoryManager:
             
             # Add to mid_term if short_term gets too large
             short_term = await self.db.get_chat_memory(chat_id, 'short_term')
+            logger.info(f"HybridMemoryManager: Retrieved {len(short_term)} messages from short_term")
             if len(short_term) > 50:  # Configurable threshold
+                logger.info(f"HybridMemoryManager: Short-term memory exceeds 50 messages, adding to mid_term")
                 await self.db.store_chat_message(
                     account_id=account['id'],
                     chat_id=chat_id,
@@ -149,15 +155,20 @@ class HybridMemoryManager:
                     content=content,
                     memory_type='mid_term'
                 )
+            
+            logger.info(f"HybridMemoryManager: Successfully stored message in database")
         
         except Exception as e:
             logger.error(f"Error adding message: {e}")
             # Fallback to file-based storage
             try:
+                logger.info(f"HybridMemoryManager: Falling back to file-based storage")
                 self.file_manager.add_message(role, content)
+                logger.info(f"Successfully stored message using file-based fallback")
+                return  # Return without raising the exception
             except Exception as file_error:
                 logger.error(f"File fallback also failed: {file_error}")
-            raise
+                raise  # Only raise if the fallback also fails
 
     def _load_memory_from_file(self, memory_type: str) -> List[Dict]:
         """

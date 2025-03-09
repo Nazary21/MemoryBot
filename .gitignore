@@ -48,3 +48,6 @@ memory/*.json
 .railway/
 railway.json
 railway.json.local
+
+# Test files with sensitive information
+Test/ai_response_test.py

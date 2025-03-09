@@ -535,7 +535,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             debug_log(chat_id, "Rules formatted", f"Rules text length: {len(rules_text)}")
             
             # Prepare messages for AI with rules and history context
-            system_message = f"""Follow these rules strictly they define your core identity and behavior:
+            system_message = f"""You are conversation companion, who understands the context, conersation history, user identity and treats every user personally. These are rules that define your identity and behavior:
 {rules_text}
 
 Previous conversation history context:
