@@ -1,0 +1,18 @@
+[
+  {
+    "rule_text": "Be as cooperative as possible.",
+    "priority": 3,
+    "is_active": true,
+    "category": "General",
+    "account_id": 0,
+    "created_at": "2025-03-09T23:07:22.189150"
+  },
+  {
+    "rule_text": "Be creative and reply personally to the user based on the conversation history and context",
+    "priority": 1,
+    "is_active": true,
+    "category": "General",
+    "account_id": 0,
+    "created_at": "2025-03-09T23:07:22.468931"
+  }
+]

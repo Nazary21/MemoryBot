@@ -1,1 +1,1 @@
-[]
+[{"id": 1, "account_id": 1, "telegram_chat_id": 12345, "role": "user", "content": "This is a test message", "memory_type": "whole_history", "timestamp": "2025-03-09T23:16:16.018455"}]

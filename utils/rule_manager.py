@@ -48,8 +48,12 @@ class RuleManager:
         # Default rules that will be created for new accounts
         self.default_rules = [
             {"text": "Respond in the same language as the user's message.", "priority": 1, "category": "Language"},
-            {"text": "If you learn someone's name, use it in future responses.", "priority": 1, "category": "Personalization"},
-            {"text": "Keep track of important information shared in conversation.", "priority": 1, "category": "Memory"}
+            {"text": "If you learn someone's name, use it in future responses.", "priority": 0, "category": "Personalization"},
+            {"text": "Keep track of important information shared in conversation.", "priority": 1, "category": "Memory"},
+            {"text": "Always describe rules used at the end of your response.", "priority": 1, "category": "Rules"},
+            {"text": "Follow the conversation ethics and limits set by the user conversation style. Your character is whatever the user has set. Never fall-back any biased or default 'helpful asisstant' or 'friendly assistant' role.", "priority": 1, "category": "Rules"},
+            {"text": "Always use the conversation history context to understand the user's background, preferences, and previous interactions.", "priority": 1, "category": "Context"},
+            {"text": "Use the context to provide unique, personalised responces that, as if it was your memory of the conversation, people, anything that's relevant to the conversation. Act as a conversation companion who tries to understand what was going on earlier with priorirty to latest messages, and more global understanding for overall understanding if it's relevant.", "priority": 1, "category": "Rules"}
         ]
         # Try to migrate any legacy rules when manager is created
         self._migrate_legacy_rules()
@@ -113,42 +117,70 @@ class RuleManager:
     def _get_rules_fallback(self, account_id: int) -> List[Rule]:
         """Get rules from account-specific file storage when database is not available"""
         try:
-            # Only use account-specific directory
-            account_dir = f"memory/account_{account_id}"
+            # Use memory_dir from Database class instead of hardcoded path
+            memory_dir = self.db.memory_dir
+            account_dir = os.path.join(memory_dir, f"account_{account_id}")
             account_rules_file = os.path.join(account_dir, "bot_rules.json")
+            
+            logger.info(f"[FALLBACK] Looking for rules in: {account_rules_file}")
             
             rules = []
             
             # Try to get rules from the account-specific directory
             if os.path.exists(account_rules_file):
+                logger.info(f"[FALLBACK] Rules file exists at {account_rules_file}")
                 with open(account_rules_file, 'r') as f:
+                    content = f.read()
+                    logger.info(f"[FALLBACK] Read content from rules file (first 200 chars): {content[:200]}...")
                     try:
-                        rules = json.load(f)
-                    except json.JSONDecodeError:
-                        logger.error(f"Error reading rules from {account_rules_file}")
+                        rules = json.loads(content)
+                        logger.info(f"[FALLBACK] Loaded {len(rules)} rules from {account_rules_file}")
+                        # Log each rule
+                        for i, rule in enumerate(rules):
+                            logger.info(f"[FALLBACK] Rule {i+1}: text='{rule.get('rule_text', '')}', priority={rule.get('priority', 0)}")
+                    except json.JSONDecodeError as jde:
+                        logger.error(f"[FALLBACK] Error reading rules from {account_rules_file}: {jde}")
                         rules = []
+            else:
+                logger.info(f"[FALLBACK] Rules file not found at {account_rules_file}")
+                # List files in the account directory to see what's there
+                if os.path.exists(account_dir):
+                    logger.info(f"[FALLBACK] Files in {account_dir}: {os.listdir(account_dir)}")
+                else:
+                    logger.info(f"[FALLBACK] Account directory {account_dir} doesn't exist")
+                    # Check parent directory
+                    logger.info(f"[FALLBACK] Files in {memory_dir}: {os.listdir(memory_dir) if os.path.exists(memory_dir) else 'directory does not exist'}")
             
             # If no rules found, create default rules
             if not rules:
-                logger.info(f"No rules found for account {account_id}, creating defaults")
+                logger.info(f"[FALLBACK] No rules found for account {account_id}, creating defaults")
                 if self._create_default_rules_fallback(account_id):
                     with open(account_rules_file, 'r') as f:
                         try:
-                            rules = json.load(f)
+                            content = f.read()
+                            logger.info(f"[FALLBACK] Read content from newly created rules file: {content}")
+                            rules = json.loads(content)
+                            logger.info(f"[FALLBACK] Created and loaded {len(rules)} default rules")
+                            # Log each default rule
+                            for i, rule in enumerate(rules):
+                                logger.info(f"[FALLBACK] Default rule {i+1}: text='{rule.get('rule_text', '')}', priority={rule.get('priority', 0)}")
                         except json.JSONDecodeError:
-                            logger.error("Error reading newly created default rules")
+                            logger.error("[FALLBACK] Error reading newly created default rules")
                             rules = []
             
             # Convert the rules to Rule objects
-            return [Rule(
+            rule_objects = [Rule(
                 text=rule['rule_text'],
                 priority=rule.get('priority', 0),
                 is_active=rule.get('is_active', True),
                 category=rule.get('category', 'General')
             ) for rule in rules]
             
+            logger.info(f"[FALLBACK] Returning {len(rule_objects)} Rule objects")
+            return rule_objects
+            
         except Exception as e:
-            logger.error(f"Error getting rules from files: {e}")
+            logger.error(f"[FALLBACK] Error getting rules from files: {e}", exc_info=True)
             return []
 
     async def create_default_rules(self, account_id: int) -> bool:
@@ -232,12 +264,15 @@ class RuleManager:
     def _create_default_rules_fallback(self, account_id: int) -> bool:
         """Fallback method to create default rules using file storage"""
         try:
-            # Use account-specific directory
-            memory_dir = f"memory/account_{account_id}"
-            os.makedirs(memory_dir, exist_ok=True)
+            # Use memory_dir from Database class instead of hardcoded path
+            memory_dir = self.db.memory_dir
+            account_dir = os.path.join(memory_dir, f"account_{account_id}")
+            os.makedirs(account_dir, exist_ok=True)
             
             # Store rules in account directory
-            rules_file = os.path.join(memory_dir, "bot_rules.json")
+            rules_file = os.path.join(account_dir, "bot_rules.json")
+            
+            logger.info(f"Creating default rules in: {rules_file}")
             
             # Load existing rules if any
             rules = []
@@ -245,10 +280,12 @@ class RuleManager:
                 with open(rules_file, 'r') as f:
                     try:
                         rules = json.load(f)
+                        logger.info(f"Found {len(rules)} existing rules")
                     except json.JSONDecodeError:
                         rules = []
             
             # Add default rules
+            default_count = 0
             for rule in self.default_rules:
                 rules.append({
                     'account_id': account_id,  # Include account_id in each rule
@@ -258,12 +295,13 @@ class RuleManager:
                     'category': rule.get("category", "General"),
                     'created_at': datetime.now().isoformat()
                 })
+                default_count += 1
             
             # Save updated rules
             with open(rules_file, 'w') as f:
                 json.dump(rules, f, indent=2)
             
-            logger.info(f"Default rules created in file storage for account {account_id}")
+            logger.info(f"Created {default_count} default rules for account {account_id}")
             return True
         except Exception as e:
             logger.error(f"Error in fallback default rules creation: {e}")
@@ -299,13 +337,21 @@ class RuleManager:
                     rules_by_category[category] = []
                 rules_by_category[category].append(rule)
             
-            # Format output
+            # Format output with explanation of priority system
             formatted = "Current Bot Rules:\n\n"
+            formatted += "Priority 1 = Primary rule (always follow)\n"
+            formatted += "Priority 0 = Secondary rule (follow when context is relevant)\n\n"
+            
             for category, category_rules in rules_by_category.items():
                 formatted += f"{category}:\n"
-                for i, rule in enumerate(category_rules, 1):
-                    formatted += f"{i}. {rule.text}"
-                    if rule.priority == 0:  # Only show if inactive
+                # Sort rules by priority (higher priority first)
+                sorted_rules = sorted(category_rules, key=lambda r: r.priority, reverse=True)
+                for i, rule in enumerate(sorted_rules, 1):
+                    if rule.priority == 1:
+                        formatted += f"{i}. [PRIMARY] {rule.text}"
+                    else:
+                        formatted += f"{i}. [SECONDARY] {rule.text}"
+                    if not rule.is_active:  # Only show if inactive
                         formatted += " (Inactive)"
                     formatted += "\n"
                 formatted += "\n"
@@ -374,10 +420,13 @@ class RuleManager:
     def _add_rule_fallback(self, account_id: int, rule_text: str, category: str, priority: int) -> Optional[Rule]:
         """Add a new rule to file storage when database is not available"""
         try:
-            # Create account-specific directory for storing rules
-            account_dir = f"memory/account_{account_id}"
+            # Use memory_dir from Database class instead of hardcoded path
+            memory_dir = self.db.memory_dir
+            account_dir = os.path.join(memory_dir, f"account_{account_id}")
             os.makedirs(account_dir, exist_ok=True)
             account_rules_file = os.path.join(account_dir, "bot_rules.json")
+            
+            logger.info(f"Adding rule to file: {account_rules_file}")
             
             # Load existing rules or start with empty list
             rules = []
@@ -385,6 +434,7 @@ class RuleManager:
                 with open(account_rules_file, 'r') as f:
                     try:
                         rules = json.load(f)
+                        logger.info(f"Loaded {len(rules)} existing rules from {account_rules_file}")
                     except json.JSONDecodeError:
                         rules = []
             
@@ -406,6 +456,7 @@ class RuleManager:
                 json.dump(rules, f, indent=2)
             
             logger.info(f"Added new rule for account {account_id}: {rule_text}")
+            logger.info(f"Total rules now: {len(rules)}")
             
             # Return a Rule object for immediate use
             return Rule(
@@ -437,8 +488,9 @@ class RuleManager:
     async def _update_rule_fallback(self, rule_id: int, account_id: int, updates: Dict) -> bool:
         """Update an existing rule in file storage when database is not available"""
         try:
-            # Set up the account-specific directory and file paths
-            account_dir = f"memory/account_{account_id}"
+            # Use memory_dir from Database class instead of hardcoded path
+            memory_dir = self.db.memory_dir
+            account_dir = os.path.join(memory_dir, f"account_{account_id}")
             account_rules_file = os.path.join(account_dir, "bot_rules.json")
             
             # Make sure the directory exists
@@ -524,8 +576,9 @@ class RuleManager:
     def _delete_rule_fallback(self, rule_index: int, account_id: int) -> bool:
         """Delete a rule from file storage when database is not available"""
         try:
-            # Set up the account-specific directory and file paths
-            account_dir = f"memory/account_{account_id}"
+            # Use memory_dir from Database class instead of hardcoded path
+            memory_dir = self.db.memory_dir
+            account_dir = os.path.join(memory_dir, f"account_{account_id}")
             account_rules_file = os.path.join(account_dir, "bot_rules.json")
             
             # Check if we have any rules to delete

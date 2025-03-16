@@ -466,13 +466,17 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         account_id = 1 if db.fallback_mode else account.get('id', 1)
         debug_log(chat_id, "message_handler", f"Using account_id: {account_id}")
         
+        # Log database status to help troubleshoot
+        logger.info(f"Database status: initialized={db.initialized}, fallback_mode={db.fallback_mode}")
+        logger.info(f"Supabase client is {'None' if db.supabase is None else 'available'}")
+        
         # Get rules for this account
         rules = await rule_manager.get_rules(account_id=account_id)
         debug_log(chat_id, "message_handler", f"Retrieved {len(rules)} rules")
         
         # Log each rule for debugging
         for i, rule in enumerate(rules):
-            debug_log(chat_id, "message_handler", f"Rule {i+1}: {rule.text[:50]}... (Priority: {rule.priority})")
+            debug_log(chat_id, "message_handler", f"Rule {i+1}: {rule.text[:50]}... (Priority: {rule.priority}, Category: {rule.category})")
         
         # Verify if this is a reply to bot's message
         if update.message.reply_to_message:
@@ -534,12 +538,20 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rules_text = rule_manager.get_formatted_rules(rules)
             debug_log(chat_id, "Rules formatted", f"Rules text length: {len(rules_text)}")
             
+            # Simple log to show the actual rules being used
+            logger.info(f"RULES BEING USED: {rules_text}")
+            
             # Prepare messages for AI with rules and history context
-            system_message = f"""You are conversation companion, who understands the context, conersation history, user identity and treats every user personally. These are rules that define your identity and behavior:
+            system_message = f"""You are an AI conersation companion that plays the role in conversational chat.
+
+# RULES
 {rules_text}
 
-Previous conversation history context:
-{history_context}"""
+# CONVERSATION HISTORY CONTEXT
+{history_context}
+
+Follow all rules, giving priority to PRIMARY rules over SECONDARY rules when there's any conflict. Use the conversation history context to understand the user's background, preferences, and previous interactions.
+"""
 
             messages = [{"role": "system", "content": system_message}]
             
@@ -587,9 +599,15 @@ Previous conversation history context:
                     fallback_rules_text = rule_manager.get_formatted_rules(fallback_rules)
                     debug_log(chat_id, "Fallback rules retrieved", f"Rules text length: {len(fallback_rules_text)}")
                 
-                system_content = "Follow the rules below."
+                system_content = "You are an AI conersation companion that plays the role in conversational chat."
                 if fallback_rules_text:
-                    system_content = f"Follow these rules:\n{fallback_rules_text}"
+                    system_content = f"""You are an AI conersation companion that plays the role in conversational chat.
+
+# RULES
+{fallback_rules_text}
+
+Follow all rules, giving priority to PRIMARY rules over SECONDARY rules when there's any conflict. Focus on addressing the user's current question while referring to any relevant context from previous messages.
+"""
                 else:
                     debug_log(chat_id, "No fallback rules available", "Using minimal system content")
                 

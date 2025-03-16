@@ -316,7 +316,7 @@ async def update_config(
 async def add_rule(
     rule_text: str = Form(...),
     category: str = Form(...),
-    priority: int = Form(0),
+    priority: int = Form(10),  # Default to priority 10 (higher than default rules)
     username: str = Depends(verify_credentials),
     db: Database = Depends()
 ):

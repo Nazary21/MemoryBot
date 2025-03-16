@@ -3,8 +3,8 @@
   "providers": {
     "openai": {
       "endpoint": "https://api.openai.com/v1",
-      "model": "gpt-3.5-turbo",
-      "display_name": "OpenAI (GPT-3.5)"
+      "model": "gpt-4",
+      "display_name": "OpenAI (GPT-4)"
     },
     "grok": {
       "endpoint": "https://api.x.ai/v1",

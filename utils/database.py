@@ -26,9 +26,40 @@ class Database:
     def setup_file_fallback(self):
         """Set up file-based fallback storage"""
         try:
-            # Create base memory directory if it doesn't exist
-            self.memory_dir = "memory"
-            os.makedirs(self.memory_dir, exist_ok=True)
+            # Check if we're using a Railway volume
+            railway_volume = os.environ.get('RAILWAY_VOLUME_MOUNT', '')
+            
+            # Log all environment variables for debugging
+            logger.info("Checking for Railway volume environment variables")
+            for key, value in os.environ.items():
+                if 'RAILWAY' in key:
+                    logger.info(f"Found Railway env var: {key}={value}")
+            
+            # Check for alternative Railway volume environment variables
+            if not railway_volume:
+                railway_volume = os.environ.get('RAILWAY_VOLUME_PATH', '')
+            if not railway_volume:
+                railway_volume = os.environ.get('RAILWAY_VOLUME', '')
+            if not railway_volume:
+                railway_volume = os.environ.get('VOLUME_PATH', '')
+            if not railway_volume:
+                # Check if /data directory exists and is writable
+                if os.path.exists('/data') and os.access('/data', os.W_OK):
+                    railway_volume = '/data'
+                    logger.info("Found /data directory, using it as volume")
+            
+            if railway_volume:
+                # Use the mounted volume for memory storage
+                volume_memory_dir = os.path.join(railway_volume, 'memory')
+                if not os.path.exists(volume_memory_dir):
+                    os.makedirs(volume_memory_dir, exist_ok=True)
+                self.memory_dir = volume_memory_dir
+                logger.info(f"Using Railway volume for memory storage: {self.memory_dir}")
+            else:
+                # Create base memory directory if it doesn't exist
+                self.memory_dir = "memory"
+                os.makedirs(self.memory_dir, exist_ok=True)
+                logger.info(f"Using local directory for memory storage: {self.memory_dir}")
             
             # Create account-specific directory for default account
             self.account_dir = os.path.join(self.memory_dir, "account_1")

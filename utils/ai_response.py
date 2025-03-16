@@ -34,7 +34,7 @@ class AIResponseHandler:
         self.client = OpenAI(api_key=OPENAI_API_KEY)  # Primary OpenAI client
         self.db = db
         # Default model and settings used when no custom settings are found
-        self.default_model = "gpt-3.5-turbo"
+        self.default_model = "gpt-4"
         self.default_settings = {
             "temperature": 1.0,
             "max_tokens": 3000
@@ -249,9 +249,14 @@ class AIResponseHandler:
                         client = self.client
                         if provider_info["api_key"] and provider_info["api_key"] != OPENAI_API_KEY:
                             client = OpenAI(api_key=provider_info["api_key"])
+                        
+                        # Use provider-specific model if the current model doesn't match the provider
+                        model = settings['model']
+                        if not model.startswith("gpt-"):
+                            model = provider_info.get("model", "gpt-4")
                             
                         response = await client.chat.completions.create(
-                            model=settings['model'],
+                            model=model,
                             messages=messages,
                             temperature=settings['temperature'],
                             max_tokens=settings['max_tokens']
@@ -282,6 +287,11 @@ class AIResponseHandler:
                         raise ValueError("Grok API key not configured")
                         
                     async with httpx.AsyncClient() as client:
+                        # Use provider-specific model if the current model doesn't match the provider
+                        model = settings['model']
+                        if not model.startswith("grok-"):
+                            model = provider_info.get("model", "grok-2-latest")
+                            
                         response = await client.post(
                             f"{provider_info['endpoint']}/chat/completions",
                             headers={
@@ -291,7 +301,8 @@ class AIResponseHandler:
                             json={
                                 "messages": messages,
                                 "temperature": settings['temperature'],
-                                "model": provider_info.get("model", "grok-1")
+                                "model": model,
+                                "max_tokens": settings.get('max_tokens', self.default_settings['max_tokens'])
                             }
                         )
                         response.raise_for_status()
@@ -311,7 +322,10 @@ class AIResponseHandler:
                 if provider_name != "openai" and OPENAI_API_KEY:
                     logger.info("Trying OpenAI as fallback")
                     try:
-                        response = await self.client.chat.completions.create(
+                        # Use synchronous client to avoid await issues
+                        from openai import OpenAI as SyncOpenAI
+                        sync_client = SyncOpenAI(api_key=OPENAI_API_KEY)
+                        response = sync_client.chat.completions.create(
                             model=self.default_model,
                             messages=messages,
                             temperature=settings['temperature'],
@@ -336,11 +350,29 @@ class AIResponseHandler:
         Returns:
             List of model names
         """
-        return [
-            "gpt-3.5-turbo",
-            "gpt-4",
-            "gpt-4-turbo-preview"
-        ]
+        # Get the active provider
+        provider_info = self.provider_manager.get_provider()
+        provider_name = provider_info["name"].lower()
+        
+        # Return models based on the active provider
+        if provider_name == "openai":
+            return [
+                "gpt-4",
+                "gpt-4-turbo-preview",
+                "gpt-3.5-turbo"
+            ]
+        elif provider_name == "grok":
+            return [
+                "grok-2-latest",
+                "grok-1"
+            ]
+        else:
+            # Default models list
+            return [
+                "gpt-4",
+                "gpt-3.5-turbo",
+                "grok-2-latest"
+            ]
 
     def get_current_model(self) -> str:
         """
