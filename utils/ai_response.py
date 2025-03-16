@@ -274,8 +274,13 @@ class AIResponseHandler:
                 logger.info(f"[COMPATIBILITY] Switched to OpenAI-compatible model: {model}")
             elif provider_name == "grok" and not model.startswith("grok-"):
                 # If using Grok but model isn't a Grok model, use a default Grok model
-                model = provider_info.get("model", "grok-2-latest") if provider_info.get("model", "").startswith("grok-") else "grok-2-latest"
+                model = "grok-2"  # Use simplified model name
                 logger.info(f"[COMPATIBILITY] Switched to Grok-compatible model: {model}")
+            
+            # Remove '-latest' suffix for Grok models
+            if provider_name == "grok" and model.endswith("-latest"):
+                model = model.replace("-latest", "")
+                logger.info(f"[COMPATIBILITY] Removed '-latest' suffix for Grok model: {model}")
             
             # Try the selected provider
             try:
@@ -336,28 +341,51 @@ class AIResponseHandler:
                         logger.error("Grok API key not configured - not attempting fallback")
                         return "I apologize, but I'm not properly configured to respond right now. Please try again later."
                         
+                    # Simplify model name - remove any "-latest" suffix
+                    if model.endswith("-latest"):
+                        model = model.replace("-latest", "")
+                    
                     async with httpx.AsyncClient() as client:
-                        # Always use a known Grok model
-                        if not model.startswith("grok-"):
-                            model = "grok-2-latest" 
-                            logger.info(f"Using safe Grok model: {model}")
+                        logger.info(f"Making Grok API request to: {provider_info['endpoint']}/chat/completions")
+                        try:
+                            response = await client.post(
+                                f"{provider_info['endpoint']}/chat/completions",
+                                headers={
+                                    "Authorization": f"Bearer {provider_info['api_key']}",
+                                    "Content-Type": "application/json"
+                                },
+                                json={
+                                    "messages": messages,
+                                    "temperature": settings['temperature'],
+                                    "model": model,
+                                    "max_tokens": settings.get('max_tokens', self.default_settings['max_tokens'])
+                                },
+                                timeout=30  # Add a reasonable timeout
+                            )
                             
-                        response = await client.post(
-                            f"{provider_info['endpoint']}/chat/completions",
-                            headers={
-                                "Authorization": f"Bearer {provider_info['api_key']}",
-                                "Content-Type": "application/json"
-                            },
-                            json={
-                                "messages": messages,
-                                "temperature": settings['temperature'],
-                                "model": model,
-                                "max_tokens": settings.get('max_tokens', self.default_settings['max_tokens'])
-                            }
-                        )
-                        response.raise_for_status()
-                        result = response.json()
-                        response_text = result["choices"][0]["message"]["content"]
+                            # Log response status and any error details
+                            logger.info(f"Grok API response status: {response.status_code}")
+                            if response.status_code != 200:
+                                logger.error(f"Grok API error: {response.text}")
+                            
+                            response.raise_for_status()
+                            result = response.json()
+                            
+                            # Add more detailed logging to help diagnose issues
+                            if "choices" not in result or len(result["choices"]) == 0:
+                                logger.error(f"Unexpected Grok API response format: {result}")
+                                return "I apologize, but I received an unexpected response format. Please try again."
+                                
+                            response_text = result["choices"][0]["message"]["content"]
+                            return response_text
+                            
+                        except httpx.TimeoutException:
+                            logger.error("Grok API request timed out")
+                            return "I apologize, but the request to my service timed out. Please try again."
+                        except Exception as grok_error:
+                            # Log the full error for debugging
+                            logger.error(f"Grok API request failed: {str(grok_error)}")
+                            # Fall through to the outer exception handler
                 
                 # Unknown provider
                 else:
@@ -393,6 +421,10 @@ class AIResponseHandler:
                         
                         # Use direct OpenAI client for fallback
                         simple_client = OpenAI(api_key=OPENAI_API_KEY)
+                        
+                        # Log what we're doing
+                        logger.info(f"Using OpenAI fallback with model: {fallback_model}")
+                        
                         response = simple_client.chat.completions.create(
                             model=fallback_model,
                             messages=messages,
@@ -401,9 +433,16 @@ class AIResponseHandler:
                         )
                         return response.choices[0].message.content
                     except Exception as fallback_error:
-                        logger.error(f"OpenAI fallback error: {fallback_error}")
+                        # Provide specific error information
+                        error_type = type(fallback_error).__name__
+                        error_msg = str(fallback_error)
+                        logger.error(f"OpenAI fallback error: {error_type}: {error_msg}")
+                        
                         # Don't try any further fallbacks
-                        return "I apologize, but I'm having difficulty connecting to my services. Please try again shortly."
+                        if "insufficient_quota" in error_msg or "exceeded your current quota" in error_msg:
+                            return "I apologize, but all available AI services are currently at capacity. Please try again later."
+                        else:
+                            return "I apologize, but I'm having difficulty connecting to my services. Please try again shortly."
                 
                 # Simple failure message if we can't handle the request
                 return "I apologize, but I encountered an error processing your request. Please try again."
