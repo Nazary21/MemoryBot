@@ -117,12 +117,26 @@ class AIProviderManager:
         """Get provider configuration"""
         name = name or self.config["active_provider"]
         logger.info(f"Getting provider config for: {name}")
+        
+        # Make sure we're using a valid provider name, fallback to openai if not
+        if name not in self.config["providers"]:
+            logger.warning(f"Invalid provider name: {name}, falling back to OpenAI")
+            name = "openai"
+            
         provider_config = self.config["providers"].get(name, self.config["providers"]["openai"])
         
         # Always use environment variables for API keys if available
         env_key = os.getenv(f"{name.upper()}_API_KEY")
         if env_key:
             provider_config["api_key"] = env_key
+            
+        # Make sure model is compatible with provider
+        if name == "openai" and not provider_config["model"].startswith("gpt-"):
+            logger.warning(f"Model {provider_config['model']} is not compatible with OpenAI, changing to gpt-3.5-turbo")
+            provider_config["model"] = "gpt-3.5-turbo"
+        elif name == "grok" and not provider_config["model"].startswith("grok-"):
+            logger.warning(f"Model {provider_config['model']} is not compatible with Grok, changing to grok-2-latest")
+            provider_config["model"] = "grok-2-latest"
         
         return {
             "name": name,
@@ -137,6 +151,14 @@ class AIProviderManager:
         if provider in self.config["providers"]:
             provider_info = self.get_provider(provider)
             if provider_info["api_key"]:
+                # Do a final model compatibility check before switching
+                if provider == "openai" and not self.config["providers"][provider]["model"].startswith("gpt-"):
+                    logger.warning(f"Fixing incompatible model before switching to OpenAI")
+                    self.config["providers"][provider]["model"] = "gpt-3.5-turbo"
+                elif provider == "grok" and not self.config["providers"][provider]["model"].startswith("grok-"):
+                    logger.warning(f"Fixing incompatible model before switching to Grok")
+                    self.config["providers"][provider]["model"] = "grok-2-latest"
+                
                 self.config["active_provider"] = provider
                 logger.info(f"Setting active provider to: {provider}")
                 self._save_config()

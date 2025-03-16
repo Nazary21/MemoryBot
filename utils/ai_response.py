@@ -3,6 +3,7 @@ import httpx
 import json
 import logging
 import os
+import time
 from typing import List, Dict, Any, Optional
 from config.ai_providers import AIProviderManager
 from openai import OpenAI
@@ -23,6 +24,13 @@ class AIResponseHandler:
     The design follows a robust pattern with multiple fallback paths to ensure
     the system can continue to function even when components fail.
     """
+    # Class variables to track request patterns
+    _request_counter = 0  # Total requests in this process
+    _error_counter = 0    # Consecutive error count
+    _last_reset_time = 0  # Time when counters were last reset
+    _MAX_CONSECUTIVE_ERRORS = 3  # Maximum allowed consecutive errors before stopping fallbacks
+    _MAX_REQUESTS_PER_MINUTE = 10  # Rate limit for our own protection
+    
     def __init__(self, db):
         """
         Initialize the AI response handler with provider manager and default settings.
@@ -39,6 +47,17 @@ class AIResponseHandler:
             "temperature": 1.0,
             "max_tokens": 3000
         }
+        # Reset counters when initializing a new instance
+        self._reset_counters_if_needed()
+
+    def _reset_counters_if_needed(self):
+        """Reset request counters if enough time has passed"""
+        current_time = time.time()
+        # Reset counters if more than 60 seconds have passed
+        if current_time - AIResponseHandler._last_reset_time > 60:
+            AIResponseHandler._request_counter = 0
+            AIResponseHandler._error_counter = 0
+            AIResponseHandler._last_reset_time = current_time
 
     async def get_account_model_settings(self, account_id: int) -> Dict:
         """
@@ -201,6 +220,20 @@ class AIResponseHandler:
         Returns:
             AI response text or error message
         """
+        # Update counters to prevent API loops
+        self._reset_counters_if_needed()
+        AIResponseHandler._request_counter += 1
+        
+        # Check if we're making too many requests
+        if AIResponseHandler._request_counter > AIResponseHandler._MAX_REQUESTS_PER_MINUTE:
+            logger.warning(f"Too many API requests detected ({AIResponseHandler._request_counter} in the last minute)")
+            return "I apologize, but I'm currently handling too many requests. Please try again in a minute."
+            
+        # Check if we have too many consecutive errors
+        if AIResponseHandler._error_counter >= AIResponseHandler._MAX_CONSECUTIVE_ERRORS:
+            logger.warning(f"Too many consecutive errors detected ({AIResponseHandler._error_counter})")
+            return "I apologize, but I'm having trouble connecting to my services. Please try again later."
+            
         try:
             # For backward compatibility, handle both int and list as first parameter
             # This allows the method to be called with either:
@@ -233,6 +266,17 @@ class AIResponseHandler:
             provider_name = provider_info["name"].lower()
             logger.info(f"Using AI provider: {provider_name}")
             
+            # Make sure model is compatible with provider
+            model = settings['model']
+            if provider_name == "openai" and not model.startswith("gpt-"):
+                # If using OpenAI but model isn't an OpenAI model, use a default OpenAI model
+                model = provider_info.get("model", "gpt-4") if provider_info.get("model", "").startswith("gpt-") else "gpt-4"
+                logger.info(f"[COMPATIBILITY] Switched to OpenAI-compatible model: {model}")
+            elif provider_name == "grok" and not model.startswith("grok-"):
+                # If using Grok but model isn't a Grok model, use a default Grok model
+                model = provider_info.get("model", "grok-2-latest") if provider_info.get("model", "").startswith("grok-") else "grok-2-latest"
+                logger.info(f"[COMPATIBILITY] Switched to Grok-compatible model: {model}")
+            
             # Try the selected provider
             try:
                 response_text = None
@@ -250,10 +294,10 @@ class AIResponseHandler:
                         if provider_info["api_key"] and provider_info["api_key"] != OPENAI_API_KEY:
                             client = OpenAI(api_key=provider_info["api_key"])
                         
-                        # Use provider-specific model if the current model doesn't match the provider
-                        model = settings['model']
+                        # Always use a known OpenAI model
                         if not model.startswith("gpt-"):
-                            model = provider_info.get("model", "gpt-4")
+                            model = "gpt-3.5-turbo"
+                            logger.info(f"Using safe OpenAI model: {model}")
                             
                         response = await client.chat.completions.create(
                             model=model,
@@ -272,25 +316,31 @@ class AIResponseHandler:
                         response_text = response.choices[0].message.content
                     except Exception as openai_error:
                         logger.error(f"OpenAI client error: {openai_error}")
-                        # If direct client fails, try the AsyncOpenAI client as fallback
-                        client = openai.AsyncOpenAI(api_key=provider_info["api_key"] or OPENAI_API_KEY)
-                        response = await client.chat.completions.create(
-                            model=settings['model'],
-                            messages=messages,
-                            temperature=settings['temperature']
-                        )
-                        response_text = response.choices[0].message.content
+                        # For OpenAI, don't try further API calls if a fatal error occurs
+                        if "insufficient_quota" in str(openai_error) or "exceeded your current quota" in str(openai_error):
+                            logger.error(f"OpenAI quota exceeded - not attempting further requests")
+                            return "I apologize, but the service is currently unavailable due to API limits. Please try again later."
+                        elif "model_not_found" in str(openai_error) or "404" in str(openai_error):
+                            # Model compatibility issue - return friendly error
+                            logger.error(f"OpenAI model compatibility issue: {openai_error}")
+                            return "I apologize, but I'm experiencing a configuration issue. Please try again later."
+                        
+                        # Simple fallback to a fixed response instead of trying another API call
+                        # This prevents cascading API calls and potential loops
+                        return "I apologize, but I'm having trouble connecting to my services right now. Please try again shortly."
                 
                 # Use Grok
                 elif provider_name == "grok":
                     if not provider_info["api_key"]:
-                        raise ValueError("Grok API key not configured")
+                        # Don't attempt a fallback, just report the error
+                        logger.error("Grok API key not configured - not attempting fallback")
+                        return "I apologize, but I'm not properly configured to respond right now. Please try again later."
                         
                     async with httpx.AsyncClient() as client:
-                        # Use provider-specific model if the current model doesn't match the provider
-                        model = settings['model']
+                        # Always use a known Grok model
                         if not model.startswith("grok-"):
-                            model = provider_info.get("model", "grok-2-latest")
+                            model = "grok-2-latest" 
+                            logger.info(f"Using safe Grok model: {model}")
                             
                         response = await client.post(
                             f"{provider_info['endpoint']}/chat/completions",
@@ -311,22 +361,40 @@ class AIResponseHandler:
                 
                 # Unknown provider
                 else:
-                    raise ValueError(f"Unknown provider: {provider_name}")
+                    # For unknown provider, use a safe fallback without making API calls
+                    logger.error(f"Unknown provider: {provider_name}")
+                    return "I apologize, but I'm not properly configured. Please contact support."
                 
+                # Reset error counter on success
+                AIResponseHandler._error_counter = 0
                 return response_text
                 
             except Exception as provider_error:
-                logger.error(f"Provider {provider_name} error: {provider_error}")
+                # Increment error counter
+                AIResponseHandler._error_counter += 1
+                logger.error(f"Provider {provider_name} error: {provider_error} (Error count: {AIResponseHandler._error_counter})")
                 
-                # If the selected provider fails and it's not OpenAI, try OpenAI as fallback
-                if provider_name != "openai" and OPENAI_API_KEY:
+                # If we've seen this error before, don't try fallbacks
+                if AIResponseHandler._error_counter > 1:
+                    logger.warning("Multiple errors detected - skipping fallback to prevent loops")
+                    return "I apologize, but I'm experiencing connectivity issues. Please try again in a moment."
+                
+                # Don't attempt fallback if quota issues or rate limits
+                if "429" in str(provider_error) or "quota" in str(provider_error).lower() or "rate limit" in str(provider_error).lower():
+                    logger.error(f"API rate limit or quota exceeded - not attempting fallback")
+                    return "I apologize, but the service is currently experiencing high demand. Please try again later."
+                
+                # Simple fallback for Grok to OpenAI - only try once
+                if provider_name == "grok" and OPENAI_API_KEY:
                     logger.info("Trying OpenAI as fallback")
                     try:
-                        # Use synchronous client to avoid await issues
-                        from openai import OpenAI as SyncOpenAI
-                        sync_client = SyncOpenAI(api_key=OPENAI_API_KEY)
-                        response = sync_client.chat.completions.create(
-                            model=self.default_model,
+                        # Always use a simple, reliable model for fallback
+                        fallback_model = "gpt-3.5-turbo"
+                        
+                        # Use direct OpenAI client for fallback
+                        simple_client = OpenAI(api_key=OPENAI_API_KEY)
+                        response = simple_client.chat.completions.create(
+                            model=fallback_model,
                             messages=messages,
                             temperature=settings['temperature'],
                             max_tokens=settings['max_tokens']
@@ -334,8 +402,11 @@ class AIResponseHandler:
                         return response.choices[0].message.content
                     except Exception as fallback_error:
                         logger.error(f"OpenAI fallback error: {fallback_error}")
+                        # Don't try any further fallbacks
+                        return "I apologize, but I'm having difficulty connecting to my services. Please try again shortly."
                 
-                raise  # Re-raise the error if all attempts failed
+                # Simple failure message if we can't handle the request
+                return "I apologize, but I encountered an error processing your request. Please try again."
                 
         except Exception as e:
             logger.error(f"Error getting chat response: {e}")
